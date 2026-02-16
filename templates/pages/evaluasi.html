@@ -1,0 +1,115 @@
+{% extends "layouts.html" %}
+{% block title %}Metrik Evaluasi{% endblock %}
+{% block page_title %}Metrik Evaluasi{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-xl font-bold text-gray-900 mb-2">Tujuan Halaman Metrik Evaluasi</h2>
+    <p class="text-sm text-gray-600">
+      Halaman ini merangkum kualitas hasil dari setiap tahap utama: preprocessing, PCA,
+      silhouette, KMeans, dan prediksi Random Forest. Tujuannya agar user tidak perlu
+      membuka banyak menu untuk menilai apakah pipeline sudah siap dipakai.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Pilih Dataset</h3>
+    <select name="dataset_id"
+            class="w-full md:w-96 border rounded-xl p-3 text-sm"
+            onchange="window.location='{{ url_for('evaluasi') }}?dataset_id=' + this.value;">
+      <option value="">-- Pilih Dataset --</option>
+      {% for d in datasets %}
+      <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>
+        {{ d.filename }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-sm text-gray-500">Status Preprocessing</p>
+      <p class="text-xl font-bold text-gray-900 mt-1">{{ 'Siap' if preprocess_run else 'Belum ada' }}</p>
+      {% if preprocess_run %}<p class="text-xs text-gray-500 mt-2">Run #{{ preprocess_run.id }} · {{ preprocess_run.method }}</p>{% endif %}
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-sm text-gray-500">Kualitas PCA</p>
+      <p class="text-xl font-bold text-gray-900 mt-1">
+        {% if pca_run and pca_run.cumulative_variance %}
+          {{ '%.2f'|format((pca_run.cumulative_variance[-1] or 0) * 100) }}%
+        {% else %}
+          -
+        {% endif %}
+      </p>
+      <p class="text-xs text-gray-500 mt-2">Cumulative explained variance</p>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-sm text-gray-500">Silhouette (Best K)</p>
+      <p class="text-xl font-bold text-gray-900 mt-1">{{ silhouette_run.best_k if silhouette_run else '-' }}</p>
+      {% if silhouette_run %}<p class="text-xs text-gray-500 mt-2">Range K {{ silhouette_run.k_min }}-{{ silhouette_run.k_max }}</p>{% endif %}
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-sm text-gray-500">RF Test Accuracy</p>
+      <p class="text-xl font-bold text-gray-900 mt-1">
+        {% if rf_eval_test and rf_eval_test.accuracy is not none %}{{ '%.4f'|format(rf_eval_test.accuracy) }}{% else %}-{% endif %}
+      </p>
+      <p class="text-xs text-gray-500 mt-2">Akurasi model pada data uji</p>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Fungsi yang Sebaiknya Ada di Metrik Evaluasi</h3>
+    <ul class="list-disc pl-5 text-sm text-gray-700 space-y-2">
+      <li>Validasi kelengkapan pipeline (upload → preprocessing → PCA → clustering → RF).</li>
+      <li>Ringkasan metrik inti per tahap (variance PCA, skor silhouette, distribusi cluster, accuracy/macro F1).</li>
+      <li>Perbandingan train vs test untuk mendeteksi overfitting pada tahap prediksi.</li>
+      <li>Riwayat run terbaru per dataset untuk audit dan reproduksibilitas.</li>
+      <li>Status kualitas data proses (jumlah fitur, komponen terpilih, parameter KMeans, ruleset RF).</li>
+      <li>Akses cepat ke output file evaluasi sebagai dasar menu Unduh Laporan.</li>
+    </ul>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Apa Saja yang Ditampilkan di Halaman Ini</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+      <div class="p-4 rounded-xl bg-gray-50">
+        <p class="font-semibold mb-2">A. Ringkasan KPI</p>
+        <ul class="list-disc pl-5 space-y-1">
+          <li>Status preprocessing terbaru.</li>
+          <li>Explained variance kumulatif PCA.</li>
+          <li>Best K hasil silhouette.</li>
+          <li>Akurasi & macro F1 train/test Random Forest.</li>
+        </ul>
+      </div>
+
+      <div class="p-4 rounded-xl bg-gray-50">
+        <p class="font-semibold mb-2">B. Detail Konfigurasi</p>
+        <ul class="list-disc pl-5 space-y-1">
+          <li>Fitur yang dipakai pada preprocessing.</li>
+          <li>Komponen PCA yang dipilih.</li>
+          <li>Parameter KMeans (K, init, iterasi).</li>
+          <li>Ruleset/ambang RF yang aktif.</li>
+        </ul>
+      </div>
+
+      <div class="p-4 rounded-xl bg-gray-50 md:col-span-2">
+        <p class="font-semibold mb-2">C. Koneksi ke Menu Lain</p>
+        <ul class="list-disc pl-5 space-y-1">
+          <li>Input dari: unggah dataset, preprocessing, PCA, clustering, dan RF.</li>
+          <li>Output ke: Visualisasi Data (grafik metrik), Unduh Laporan (export KPI), Pengaturan (threshold/aturan evaluasi).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  {% if selected_dataset and not preprocess_run and not pca_run and not silhouette_run and not kmeans_run and not rf_eval_train and not rf_eval_test %}
+  <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
+    Dataset dipilih, namun belum ada hasil pipeline yang bisa dievaluasi.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
