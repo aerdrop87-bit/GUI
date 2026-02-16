@@ -294,6 +294,7 @@ class AlignmentResult:
     mapping: Dict[Any, str]                 # raw_cluster_value -> "C1/C2/C3"
     sign: Dict[str, int]                    # "PCA1".. -> +1/-1
     score_accuracy: float                   # accuracy pada full data
+    score_macro_f1: float                   # macro-F1 pada full data
     note: str                               # keterangan singkat
 
 
@@ -323,7 +324,7 @@ def infer_best_alignment(
     labels_target: List[str] = ["C1", "C2", "C3"],
 ) -> AlignmentResult:
     """
-    Cari mapping Cluster->C* dan sign flip PCA1..PCA4 terbaik berdasarkan akurasi terhadap rule RF.
+    Cari mapping Cluster->C* dan sign flip PCA1..PCA4 terbaik berdasarkan macro-F1 terhadap rule RF.
 
     Catatan:
     - Walaupun label dari KMeans sudah berbentuk 'C1/C2/C3', itu tetap bisa tertukar maknanya.
@@ -388,29 +389,49 @@ def infer_best_alignment(
             mapping = {cid: lbl for cid, lbl in zip(cluster_ids, perm)}
             y_true = [mapping[v] for v in raw_vals]
             acc = float(accuracy_score(y_true, pred))
+            macro = float(f1_score(y_true, pred, labels=labels_target, average="macro", zero_division=0))
 
-            # tie-break deterministik: acc desc, jumlah flip asc, mapping string asc
+            # tie-break deterministik: macro-F1 desc, accuracy desc, jumlah flip asc, mapping string asc
             flips = sum(1 for s in signs if s == -1)
             mapping_key = "|".join([f"{str(k)}->{v}" for k, v in sorted(mapping.items(), key=lambda t: str(t[0]))])
 
             if best is None:
-                best = AlignmentResult(mapping=mapping, sign=sign_map, score_accuracy=acc, note=mapping_key)
+                best = AlignmentResult(
+                    mapping=mapping,
+                    sign=sign_map,
+                    score_accuracy=acc,
+                    score_macro_f1=macro,
+                    note=mapping_key,
+                )
             else:
                 best_flips = sum(1 for v in best.sign.values() if v == -1)
                 best_key = best.note
-                if (acc > best.score_accuracy) or (
-                    acc == best.score_accuracy and (flips < best_flips)
+                if (macro > best.score_macro_f1) or (
+                    macro == best.score_macro_f1 and acc > best.score_accuracy
                 ) or (
-                    acc == best.score_accuracy and flips == best_flips and mapping_key < best_key
+                    macro == best.score_macro_f1 and acc == best.score_accuracy and flips < best_flips
+                ) or (
+                    macro == best.score_macro_f1 and acc == best.score_accuracy and flips == best_flips and mapping_key < best_key
                 ):
-                    best = AlignmentResult(mapping=mapping, sign=sign_map, score_accuracy=acc, note=mapping_key)
+                    best = AlignmentResult(
+                        mapping=mapping,
+                        sign=sign_map,
+                        score_accuracy=acc,
+                        score_macro_f1=macro,
+                        note=mapping_key,
+                    )
 
     assert best is not None
     return AlignmentResult(
         mapping=best.mapping,
         sign=best.sign,
         score_accuracy=best.score_accuracy,
-        note=f"Auto alignment terbaik (full-data acc={best.score_accuracy:.4f}): {best.note} | sign={best.sign}",
+        score_macro_f1=best.score_macro_f1,
+        note=(
+            "Auto alignment terbaik "
+            f"(full-data macro-F1={best.score_macro_f1:.4f}, acc={best.score_accuracy:.4f}): "
+            f"{best.note} | sign={best.sign}"
+        ),
     )
 
 
@@ -547,6 +568,7 @@ def run_rf_manual_evaluation(
             mapping=mapping,
             sign={c: 1 for c in ["PCA1", "PCA2", "PCA3", "PCA4"]},
             score_accuracy=0.0,
+            score_macro_f1=0.0,
             note="alignment_mode=none (tanpa auto mapping/sign flip).",
         )
 
@@ -589,6 +611,7 @@ def run_rf_manual_evaluation(
         "alignment_mode": alignment_mode,
         "alignment_note": alignment.note,
         "alignment_full_data_accuracy": float(alignment.score_accuracy),
+        "alignment_full_data_macro_f1": float(alignment.score_macro_f1),
         "mapping": str(alignment.mapping),
         "sign": str(alignment.sign),
     }
@@ -603,6 +626,7 @@ def run_rf_manual_evaluation(
             "mapping": alignment.mapping,
             "sign": alignment.sign,
             "full_data_accuracy": alignment.score_accuracy,
+            "full_data_macro_f1": alignment.score_macro_f1,
             "note": alignment.note,
         },
         "train": {
@@ -1208,6 +1232,7 @@ def run_rf_manual_evaluation(
 #         "alignment_mode": alignment_mode,
 #         "alignment_note": alignment.note,
 #         "alignment_full_data_accuracy": float(alignment.score_accuracy),
+# "alignment_full_data_macro_f1": float(alignment.score_macro_f1),
 #         "mapping": str(alignment.mapping),
 #         "sign": str(alignment.sign),
 #     }
@@ -1222,6 +1247,7 @@ def run_rf_manual_evaluation(
 #             "mapping": alignment.mapping,
 #             "sign": alignment.sign,
 #             "full_data_accuracy": alignment.score_accuracy,
+# "full_data_macro_f1": alignment.score_macro_f1,
 #             "note": alignment.note,
 #         },
 #         "train": {
