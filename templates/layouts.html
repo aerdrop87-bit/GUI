@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}PDAM Analytics{% endblock %}</title>
+
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Plotly (Scatter PCA) -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <!-- Custom Style -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100">
+
+    <!-- ============================= -->
+    <!-- WRAPPER -->
+    <!-- ============================= -->
+    <div class="flex h-screen overflow-hidden">
+
+        {% include 'layouts/sidebar.html' %}
+        <!-- ============================= -->
+        <!-- MAIN CONTENT -->
+        <!-- ============================= -->
+        <div class="flex-1 flex flex-col overflow-y-auto">
+
+            {% include 'layouts/header.html' %}
+
+
+            <!-- ============================= -->
+            <!-- PAGE CONTENT -->
+            <!-- ============================= -->
+            <main class="p-6">
+
+                {% block content %}
+                <!-- Isi halaman akan masuk di sini -->
+                {% endblock %}
+
+            </main>
+
+        </div>
+
+    </div>
+
+</body>
+</html>

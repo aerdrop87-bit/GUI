@@ -1,0 +1,32 @@
+{% extends "layouts.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard Overview{% endblock %}
+
+{% block content %}
+
+<div class="grid grid-cols-4 gap-6">
+
+    <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm text-gray-500">Total Data</h2>
+        <p class="text-2xl font-bold">1,250</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm text-gray-500">Clusters</h2>
+        <p class="text-2xl font-bold">3</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm text-gray-500">Silhouette</h2>
+        <p class="text-2xl font-bold">0.62</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm text-gray-500">Accuracy</h2>
+        <p class="text-2xl font-bold">91%</p>
+    </div>
+
+</div>
+
+{% endblock %}

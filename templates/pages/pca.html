@@ -1,0 +1,188 @@
+{% extends "layouts.html" %}
+{% block title %}PCA Analysis{% endblock %}
+{% block page_title %}PCA{% endblock %}
+
+{% block content %}
+
+<!-- ================= FLASH MESSAGE ================= -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+    {% for category, message in messages %}
+    <div class="mb-4 p-4 rounded-xl
+        {% if category == 'success' %}
+            bg-green-100 text-green-700
+        {% else %}
+            bg-red-100 text-red-700
+        {% endif %}">
+        {{ message }}
+    </div>
+    {% endfor %}
+{% endif %}
+{% endwith %}
+
+<!-- ================= SELECT DATASET ================= -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+
+    <h2 class="text-xl font-bold text-gray-900 mb-4">
+        Jalankan PCA (mengambil data dari output Preprocessing terbaru)
+    </h2>
+
+    <form method="POST" action="{{ url_for('pca.index', dataset_id=selected_dataset_id) }}">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+            <!-- SELECT DATASET -->
+            <div class="md:col-span-2">
+                <label class="block text-sm text-gray-600 mb-1">Dataset</label>
+                <select name="dataset_id"
+                        class="w-full border rounded-xl p-3 text-sm"
+                        required
+                        onchange="window.location='{{ url_for('pca.index') }}?dataset_id=' + this.value;">
+                    <option value="">-- Pilih Dataset --</option>
+                    {% for d in datasets %}
+                    <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>
+                        {{ d.filename }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="text-xs text-gray-500 mt-1">
+                    PCA otomatis memakai <b>PreprocessRun</b> terakhir yang sukses untuk dataset terpilih.
+                </p>
+            </div>
+
+            <!-- METHOD -->
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">Matriks</label>
+                <select name="method" class="w-full border rounded-xl p-3 text-sm">
+                    <option value="correlation" selected>Korelasi (disarankan)</option>
+                    <option value="covariance">Kovarians</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Sesuai Colab Anda, default pakai korelasi.</p>
+            </div>
+
+            <!-- K -->
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">Komponen dipakai (untuk tahap cluster)</label>
+                <input type="number"
+                       name="selected_components_count"
+                       value="4"
+                       min="1"
+                       class="w-full border rounded-xl p-3 text-sm" />
+                <p class="text-xs text-gray-500 mt-1">Tetap dihitung sampai PCA9, tapi ditandai PCA1..PCAk.</p>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <button type="submit"
+                    class="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">
+                Jalankan PCA
+            </button>
+        </div>
+    </form>
+
+    {% if last_preprocess %}
+    <div class="mt-4 p-4 bg-gray-50 rounded-xl text-sm text-gray-700">
+        <div><b>Preprocessing terakhir:</b> Run #{{ last_preprocess.id }} ({{ last_preprocess.created_at }})</div>
+        <div class="text-xs text-gray-500 mt-1">Output: {{ last_preprocess.output_path }}</div>
+    </div>
+    {% else %}
+    {% if selected_dataset_id %}
+    <div class="mt-4 p-4 bg-red-50 rounded-xl text-sm text-red-700">
+        Dataset ini belum punya preprocessing sukses. Jalankan preprocessing dulu.
+    </div>
+    {% endif %}
+    {% endif %}
+
+</div>
+
+<!-- ================= HASIL PCA TERAKHIR UNTUK DATASET ================= -->
+{% if last_pca_for_dataset and last_pca_for_dataset.status == 'success' %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 mb-2">Hasil PCA Terakhir (Dataset Terpilih)</h2>
+    <p class="text-sm text-gray-600 mb-4">
+        Run #{{ last_pca_for_dataset.id }} • Metode: {{ last_pca_for_dataset.method }} •
+        Komponen dipakai: {{ last_pca_for_dataset.selected_components }}
+    </p>
+
+    <a class="inline-block px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition"
+       href="{{ url_for('pca.download', run_id=last_pca_for_dataset.id) }}">
+        Download Output PCA (Excel)
+    </a>
+
+    {% if last_pca_for_dataset.cumulative_variance %}
+    <div class="mt-4">
+        <h3 class="font-semibold text-gray-900 mb-2">Ringkasan Variansi (Top 9)</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr class="bg-gray-50 text-left text-gray-600">
+                        <th class="px-3 py-2">Komponen</th>
+                        <th class="px-3 py-2">Eigenvalue</th>
+                        <th class="px-3 py-2">Proporsi (%)</th>
+                        <th class="px-3 py-2">Kumulatif (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in range(last_pca_for_dataset.n_components_total) %}
+                    <tr class="border-t">
+                        <td class="px-3 py-2">PCA{{ i+1 }}</td>
+                        <td class="px-3 py-2">{{ "%.6f"|format(last_pca_for_dataset.eigenvalues[i]) }}</td>
+                        <td class="px-3 py-2">{{ "%.6f"|format(last_pca_for_dataset.explained_variance[i]) }}</td>
+                        <td class="px-3 py-2">{{ "%.6f"|format(last_pca_for_dataset.cumulative_variance[i]) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- ================= RIWAYAT PCA ================= -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">Riwayat PCA Terbaru</h2>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+            <thead>
+                <tr class="bg-gray-50 text-left text-gray-600">
+                    <th class="px-3 py-2">Run</th>
+                    <th class="px-3 py-2">PreprocessRun</th>
+                    <th class="px-3 py-2">Method</th>
+                    <th class="px-3 py-2">Komponen dipakai</th>
+                    <th class="px-3 py-2">Status</th>
+                    <th class="px-3 py-2">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in pca_runs %}
+                <tr class="border-t">
+                    <td class="px-3 py-2">#{{ r.id }}</td>
+                    <td class="px-3 py-2">#{{ r.preprocess_run_id }}</td>
+                    <td class="px-3 py-2">{{ r.method }}</td>
+                    <td class="px-3 py-2">{{ r.selected_components }}</td>
+                    <td class="px-3 py-2">
+                        {% if r.status == 'success' %}
+                            <span class="text-green-700 font-medium">success</span>
+                        {% else %}
+                            <span class="text-red-700 font-medium">failed</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-2">
+                        {% if r.status == 'success' and r.output_path %}
+                        <a class="text-blue-600 hover:underline"
+                           href="{{ url_for('pca.download', run_id=r.id) }}">
+                           Download
+                        </a>
+                        {% else %}
+                        <span class="text-gray-400">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

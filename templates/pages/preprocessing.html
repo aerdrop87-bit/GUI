@@ -1,0 +1,168 @@
+{% extends "layouts.html" %}
+{% block title %}Preprocessing Data{% endblock %}
+{% block page_title %}Preprocessing{% endblock %}
+
+{% block content %}
+
+<!-- ================= FLASH MESSAGE ================= -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+    {% for category, message in messages %}
+    <div class="mb-4 p-4 rounded-xl
+        {% if category == 'success' %}
+            bg-green-100 text-green-700
+        {% else %}
+            bg-red-100 text-red-700
+        {% endif %}">
+        {{ message }}
+    </div>
+    {% endfor %}
+{% endif %}
+{% endwith %}
+
+<!-- ================= SELECT DATASET ================= -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+
+    <h2 class="text-xl font-bold text-gray-900 mb-4">
+        Pilih Dataset untuk Preprocessing
+    </h2>
+
+    <form method="POST" action="{{ url_for('preprocessing.index') }}">
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+            <!-- SELECT DATASET -->
+            <div class="md:col-span-2">
+                <label class="block text-sm text-gray-600 mb-1">Dataset</label>
+                <select name="dataset_id"
+                        class="w-full border rounded-xl p-3 text-sm"
+                        required>
+                    <option value="">-- Pilih Dataset --</option>
+                    {% for d in datasets %}
+                    <option value="{{ d.id }}">
+                        {{ d.filename }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- MODE -->
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">Mode</label>
+                <select name="mode" class="w-full border rounded-xl p-3 text-sm">
+                    <option value="colab" selected>colab (strict, match notebook)</option>
+                    <option value="robust">robust (encode + imputasi)</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">
+                    colab: fail-fast kalau ada teks/NaN agar hasil tidak diam-diam beda.
+                </p>
+            </div>
+
+            <!-- IMPUTATION -->
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">Imputation</label>
+                <select name="imputation_strategy" class="w-full border rounded-xl p-3 text-sm">
+                    <option value="none" selected>none (match colab)</option>
+                    <option value="median">median</option>
+                    <option value="mean">mean</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">
+                    Di Colab Anda tidak ada imputasi; default di sini: none.
+                </p>
+            </div>
+
+        </div>
+
+        <div class="mt-4 flex flex-col md:flex-row items-start md:items-center gap-4">
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="debug_sheets" checked class="rounded">
+                Tulis debug sheets (Debug_Info, Scaler_Params, Debug_Stats)
+            </label>
+
+            <button type="submit"
+                    class="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">
+                Jalankan Preprocessing
+            </button>
+        </div>
+
+        <p class="text-xs text-gray-500 mt-3">
+            Output akan berisi kolom z_* untuk 9 fitur: goltarif, wilayah, lama berlangganan, mawal, makhir,
+            pemakaian, minpemakaianair, slip tagihan, jumlah tagihan (Rp.).
+        </p>
+    </form>
+
+</div>
+
+<!-- ================= RIWAYAT PREPROCESSING ================= -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+
+    <h2 class="text-xl font-bold text-gray-900 mb-4">
+        Riwayat Preprocessing (Tercatat di Database)
+    </h2>
+
+    {% if preprocess_runs and preprocess_runs|length > 0 %}
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-sm">
+                <thead>
+                    <tr class="bg-gray-50 text-left text-gray-600">
+                        <th class="px-4 py-3">Waktu</th>
+                        <th class="px-4 py-3">Dataset</th>
+                        <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3">Output</th>
+                        <th class="px-4 py-3">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for run in preprocess_runs %}
+                    <tr class="border-t">
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            {{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") if run.created_at else "-" }}
+                        </td>
+                        <td class="px-4 py-3">
+                            {{ run.dataset.filename if run.dataset else ("Dataset ID " ~ run.dataset_id) }}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if run.status == "success" %}
+                                <span class="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                    SUCCESS
+                                </span>
+                            {% else %}
+                                <span class="px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs font-semibold">
+                                    FAILED
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if run.output_path %}
+                                <span class="text-gray-700">{{ run.output_path.split('/')[-1] }}</span>
+                            {% else %}
+                                <span class="text-gray-400">-</span>
+                            {% endif %}
+                            {% if run.error_message %}
+                                <div class="text-xs text-red-600 mt-1">
+                                    {{ run.error_message }}
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if run.status == "success" and run.output_path %}
+                                <a href="{{ url_for('preprocessing.download', run_id=run.id) }}"
+                                   class="px-3 py-2 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700">
+                                    Download
+                                </a>
+                            {% else %}
+                                <span class="text-gray-400 text-xs">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="text-sm text-gray-500">Belum ada preprocessing run yang tersimpan.</p>
+    {% endif %}
+
+</div>
+
+{% endblock %}

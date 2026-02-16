@@ -1,0 +1,99 @@
+<!-- SIDEBAR -->
+<aside class="w-72 bg-white border-r border-gray-200 shadow-sm flex flex-col">
+  <!-- LOGO -->
+  <div class="h-16 flex items-center gap-3 px-6 border-b">
+    <div
+      class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold"
+    >
+      PA
+    </div>
+
+    <div>
+      <p class="text-sm font-bold text-gray-900 leading-none">PDAM Analytics</p>
+      <span class="text-xs text-gray-500"> System </span>
+    </div>
+  </div>
+
+  <!-- MENU -->
+  <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+    <!-- ACTIVE -->
+    <a
+      href="/dashboard"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path in ['/', '/dashboard'] %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Ringkasan Dashboard</span>
+    </a>
+
+    <a
+      href="{{ url_for('upload.upload_file') }}"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path.startswith('/upload') %} text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow {% else %} text-gray-600 hover:bg-gray-100 {% endif %}"
+    >
+      <span class="text-sm">Unggah Dataset</span>
+    </a>
+
+    <a
+      href="{{ url_for('preprocessing.index') }}"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path.startswith('/preprocessing') %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Preprocessing</span>
+    </a>
+
+    <a
+      href="{{ url_for('pca.index') }}"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path.startswith('/pca') %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Analisis PCA</span>
+    </a>
+
+    <a
+      href="{{ url_for('clustering.index') }}"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path.startswith('/clustering') %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Hasil Clustering</span>
+    </a>
+
+    <a
+      href="{{ url_for('rf.index') }}"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path.startswith('/rf') %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Prediksi Random Forest</span>
+    </a>
+
+    <a
+      href="/evaluasi"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path == '/evaluasi' %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Metrik Evaluasi</span>
+    </a>
+
+    <a
+      href="/visualisasi"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path == '/visualisasi' %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Visualisasi Data</span>
+    </a>
+
+    <a
+      href="/unduh"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path == '/unduh' %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Unduh Laporan</span>
+    </a>
+
+    <a
+      href="/pengaturan"
+      class="flex items-center gap-3 px-3 py-2 rounded-xl {% if request.path == '/pengaturan' %}text-white bg-gradient-to-r from-blue-500 to-indigo-600 shadow{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+    >
+      <span class="text-sm">Pengaturan</span>
+    </a>
+  </nav>
+
+  <!-- FOOTER -->
+  <div class="p-3 border-t">
+    <button
+      class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-gray-600 hover:bg-gray-100"
+    >
+      Tutup
+    </button>
+  </div>
+</aside>

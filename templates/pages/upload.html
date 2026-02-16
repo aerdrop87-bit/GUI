@@ -1,0 +1,58 @@
+{% extends "layouts.html" %} {% block title %}Upload{% endblock %} {% block
+page_title %}Upload Data{% endblock %} {% block content %}
+
+<!-- FLASH MESSAGE -->
+{% with messages = get_flashed_messages(with_categories=true) %} {% if messages
+%} {% for category, message in messages %}
+<div class="mb-4 p-4 rounded-xl {% if category == 'success' %} bg-green-100 text-green-700 {% else %} bg-red-100 text-red-700 {% endif %}">
+  {{ message }}
+</div>
+{% endfor %} {% endif %} {% endwith %}
+
+<form action="{{ url_for('upload.upload_file') }}" method="POST" enctype="multipart/form-data">
+  <div class="bg-white rounded-2xl shadow-sm border p-8">
+    <div class="mb-8">
+      <h2 class="text-2xl font-bold">Unggah Dataset Pelanggan</h2>
+      <p class="text-gray-500">Format Excel (.xlsx)</p>
+    </div>
+    <label id="drop-area" class="border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center hover:border-blue-500 hover:bg-blue-50 transition cursor-pointer">
+      <div id="upload-icon" class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-4 text-3xl">
+        📂
+      </div>
+
+      <h3 id="file-label" class="text-lg font-semibold text-gray-900">
+        Klik atau tarik file Excel ke sini
+      </h3>
+
+      <p class="text-sm text-gray-500 mt-1">Format: .xlsx | Maks: 50MB</p>
+
+      <input id="file-input" type="file" name="file" accept=".xlsx" class="hidden" required />
+    </label>
+
+    <div class="mt-8 flex justify-end">
+      <button type="submit" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700">
+        Upload Dataset
+      </button>
+    </div>
+  </div>
+</form>
+
+<!-- ============================= -->
+<!-- JS PREVIEW FILE -->
+<!-- ============================= -->
+<script>
+  const fileInput = document.getElementById("file-input");
+  const fileLabel = document.getElementById("file-label");
+  const uploadIcon = document.getElementById("upload-icon");
+
+  fileInput.addEventListener("change", function () {
+    if (this.files.length > 0) {
+      const fileName = this.files[0].name;
+
+      fileLabel.innerText = fileName;
+      uploadIcon.innerText = "✅";
+    }
+  });
+</script>
+
+{% endblock %}
