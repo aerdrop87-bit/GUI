@@ -1,32 +1,188 @@
 {% extends "layouts.html" %}
 
 {% block title %}Dashboard{% endblock %}
-{% block page_title %}Dashboard Overview{% endblock %}
+{% block page_title %}Dashboard Data Mentah{% endblock %}
 
 {% block content %}
 
-<div class="grid grid-cols-4 gap-6">
+{% set v_dataset_count = dataset_count|default(0, true) %}
+{% set v_total_rows = total_raw_rows_uploaded|default(0, true) %}
+{% set v_avg_rows = avg_rows_per_dataset|default(0, true) %}
+{% set v_avg_cols = avg_cols_per_dataset|default(0, true) %}
+{% set v_missing_files = missing_files_count|default(0, true) %}
 
-    <div class="bg-white p-4 rounded-xl shadow">
-        <h2 class="text-sm text-gray-500">Total Data</h2>
-        <p class="text-2xl font-bold">1,250</p>
-    </div>
+<div class="space-y-6">
+    <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-cyan-900 p-6 text-white">
+            <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+                <div class="max-w-3xl">
+                    <p class="text-xs font-medium uppercase tracking-[0.2em] text-cyan-200">Dashboard Overview</p>
+                    <h2 class="mt-2 text-2xl font-semibold">Monitoring Data Mentah PDAM</h2>
+                    <p class="mt-2 text-sm text-slate-200">
+                        Tampilan ringkas untuk melihat volume dataset, kualitas ketersediaan file, progres pipeline, dan preview isi data mentah.
+                    </p>
+                </div>
+                <form method="GET" action="{{ url_for('index') }}" class="w-full rounded-2xl bg-white/10 p-4 backdrop-blur xl:w-[380px]">
+                    <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-cyan-100">Dataset Preview</label>
+                    <select name="dataset_id" onchange="this.form.submit()"
+                            class="w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100">
+                        {% if datasets %}
+                        {% for d in datasets %}
+                        <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>{{ d.filename }}</option>
+                        {% endfor %}
+                        {% else %}
+                        <option value="">Belum ada dataset</option>
+                        {% endif %}
+                    </select>
+                </form>
+            </div>
+        </div>
 
-    <div class="bg-white p-4 rounded-xl shadow">
-        <h2 class="text-sm text-gray-500">Clusters</h2>
-        <p class="text-2xl font-bold">3</p>
-    </div>
+        <div class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+            <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total Dataset</p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ "{:,.0f}".format(v_dataset_count) }}</p>
+                <p class="mt-1 text-xs text-slate-500">Jumlah file mentah tersimpan.</p>
+            </article>
+            <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total Baris</p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ "{:,.0f}".format(v_total_rows) }}</p>
+                <p class="mt-1 text-xs text-slate-500">Akumulasi baris semua dataset.</p>
+            </article>
+            <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Rata-rata Baris</p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ "{:,.2f}".format(v_avg_rows) }}</p>
+                <p class="mt-1 text-xs text-slate-500">Rata-rata ukuran dataset.</p>
+            </article>
+            <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Rata-rata Kolom</p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ "{:,.2f}".format(v_avg_cols) }}</p>
+                <p class="mt-1 text-xs text-slate-500">Kepadatan atribut data.</p>
+            </article>
+        </div>
+    </section>
 
-    <div class="bg-white p-4 rounded-xl shadow">
-        <h2 class="text-sm text-gray-500">Silhouette</h2>
-        <p class="text-2xl font-bold">0.62</p>
-    </div>
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
+            <h3 class="text-lg font-semibold text-slate-900">Informasi Utama</h3>
+            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Upload Terbaru</p>
+                    <p class="mt-2 break-all text-sm font-semibold text-slate-900">{{ latest_upload_name|default("-", true) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ latest_upload_time|default("-", true) }}</p>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">File Tidak Ditemukan</p>
+                    <p class="mt-2 text-2xl font-semibold {% if v_missing_files > 0 %}text-rose-600{% else %}text-emerald-600{% endif %}">
+                        {{ "{:,.0f}".format(v_missing_files) }}
+                    </p>
+                    <p class="mt-1 text-xs text-slate-500">Pastikan seluruh file fisik dataset tersedia.</p>
+                </div>
+            </div>
+        </article>
 
-    <div class="bg-white p-4 rounded-xl shadow">
-        <h2 class="text-sm text-gray-500">Accuracy</h2>
-        <p class="text-2xl font-bold">91%</p>
-    </div>
+        <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 class="text-lg font-semibold text-slate-900">Status Pipeline</h3>
+            <p class="mt-1 text-xs text-slate-500">Total run sukses per tahap.</p>
+            <div class="mt-4 space-y-2 text-sm">
+                <div class="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span class="text-slate-600">Preprocessing</span><strong class="text-slate-900">{{ preprocess_success_count|default(0, true) }}</strong></div>
+                <div class="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span class="text-slate-600">PCA</span><strong class="text-slate-900">{{ pca_success_count|default(0, true) }}</strong></div>
+                <div class="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span class="text-slate-600">Silhouette</span><strong class="text-slate-900">{{ silhouette_success_count|default(0, true) }}</strong></div>
+                <div class="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span class="text-slate-600">KMeans</span><strong class="text-slate-900">{{ kmeans_success_count|default(0, true) }}</strong></div>
+                <div class="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span class="text-slate-600">RF Evaluation</span><strong class="text-slate-900">{{ rf_eval_success_count|default(0, true) }}</strong></div>
+            </div>
+        </article>
+    </section>
 
+    <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-1">
+            <h3 class="text-lg font-semibold text-slate-900">Riwayat Dataset Terunggah</h3>
+            <p class="text-sm text-slate-500">Daftar seluruh data mentah beserta ukuran dan status file.</p>
+        </div>
+
+        <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="min-w-full text-sm">
+                <thead class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <tr>
+                        <th class="px-4 py-3">No</th>
+                        <th class="px-4 py-3">File Tersimpan</th>
+                        <th class="px-4 py-3">File Asli</th>
+                        <th class="px-4 py-3">Upload</th>
+                        <th class="px-4 py-3">Baris</th>
+                        <th class="px-4 py-3">Kolom</th>
+                        <th class="px-4 py-3">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 text-slate-700">
+                    {% if upload_rows %}
+                    {% for row in upload_rows %}
+                    <tr class="odd:bg-white even:bg-slate-50/60">
+                        <td class="px-4 py-3">{{ row.no }}</td>
+                        <td class="px-4 py-3 font-medium text-slate-900">{{ row.filename }}</td>
+                        <td class="px-4 py-3">{{ row.original_filename or "-" }}</td>
+                        <td class="px-4 py-3">{{ row.uploaded_at }}</td>
+                        <td class="px-4 py-3">{{ "{:,.0f}".format(row.row_count|default(0, true)) }}</td>
+                        <td class="px-4 py-3">{{ "{:,.0f}".format(row.col_count|default(0, true)) }}</td>
+                        <td class="px-4 py-3">
+                            {% if row.file_exists %}
+                            <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Tersedia</span>
+                            {% else %}
+                            <span class="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">Tidak Ditemukan</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-4 py-8 text-center text-slate-500">Belum ada dataset mentah yang diunggah.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-1">
+            <h3 class="text-lg font-semibold text-slate-900">Preview Data Mentah Dataset Terpilih</h3>
+            <p class="text-sm text-slate-500">Menampilkan baris awal agar pembacaan cepat dan tetap ringan.</p>
+        </div>
+
+        {% if selected_dataset and selected_dataset_stats %}
+        <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
+            <span class="rounded-full bg-slate-100 px-3 py-1.5">Dataset: {{ selected_dataset.filename }}</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1.5">Upload: {{ selected_dataset_stats.uploaded_at|default("-", true) }}</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1.5">Total baris: {{ "{:,.0f}".format(selected_dataset_stats.row_count|default(0, true)) }}</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1.5">Total kolom: {{ "{:,.0f}".format(selected_dataset_stats.col_count|default(0, true)) }}</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1.5">Baris preview: {{ "{:,.0f}".format(selected_dataset_stats.preview_count|default(0, true)) }}</span>
+        </div>
+
+        <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="min-w-full text-sm">
+                <thead class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <tr>
+                        {% for col in raw_preview_columns %}
+                        <th class="px-4 py-3">{{ col }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 text-slate-700">
+                    {% for row in raw_preview_rows %}
+                    <tr class="odd:bg-white even:bg-slate-50/60">
+                        {% for val in row %}
+                        <td class="px-4 py-3">{{ val }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% elif preview_note %}
+        <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{{ preview_note }}</div>
+        {% else %}
+        <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">Pilih dataset untuk menampilkan preview data mentah.</div>
+        {% endif %}
+    </section>
 </div>
 
 {% endblock %}

@@ -170,6 +170,27 @@ def _file_meta(path):
         return None
 
 
+def _get_dataset_dimensions(dataset_obj):
+    """
+    Ambil dimensi dataset (rows, cols).
+    Prioritaskan metadata di DB, fallback baca file bila metadata belum ada.
+    """
+    rows = dataset_obj.n_rows if isinstance(dataset_obj.n_rows, int) and dataset_obj.n_rows >= 0 else None
+    cols = dataset_obj.n_cols if isinstance(dataset_obj.n_cols, int) and dataset_obj.n_cols >= 0 else None
+
+    if (rows is None or cols is None) and dataset_obj.filepath and os.path.exists(dataset_obj.filepath):
+        try:
+            df_tmp = pd.read_excel(dataset_obj.filepath)
+            if rows is None:
+                rows = int(df_tmp.shape[0])
+            if cols is None:
+                cols = int(df_tmp.shape[1])
+        except Exception:
+            pass
+
+    return int(rows or 0), int(cols or 0)
+
+
 def _get_chart_export_data(dataset_id):
     """
     Ambil data mentah chart untuk ekspor PNG ZIP di halaman unduh.
@@ -303,14 +324,120 @@ def _get_chart_export_data(dataset_id):
 # ==========================================
 @app.route("/")
 def index():
-    return render_template("pages/index.html")
+    datasets = Dataset.query.order_by(Dataset.uploaded_at.desc()).all()
+    selected_dataset_id = request.args.get("dataset_id", type=int)
+
+    selected_dataset = None
+    if selected_dataset_id:
+        selected_dataset = Dataset.query.get(selected_dataset_id)
+    elif datasets:
+        selected_dataset = datasets[0]
+        selected_dataset_id = selected_dataset.id
+
+    upload_rows = []
+    total_raw_rows_uploaded = 0
+    total_raw_columns_uploaded = 0
+    missing_files_count = 0
+
+    for idx, ds in enumerate(datasets, start=1):
+        row_count, col_count = _get_dataset_dimensions(ds)
+        file_exists = bool(ds.filepath and os.path.exists(ds.filepath))
+        if not file_exists:
+            missing_files_count += 1
+
+        total_raw_rows_uploaded += row_count
+        total_raw_columns_uploaded += col_count
+
+        upload_rows.append(
+            {
+                "no": idx,
+                "id": ds.id,
+                "filename": ds.filename,
+                "original_filename": ds.original_filename,
+                "uploaded_at": ds.uploaded_at.strftime("%d-%m-%Y %H:%M") if ds.uploaded_at else "-",
+                "row_count": row_count,
+                "col_count": col_count,
+                "file_exists": file_exists,
+            }
+        )
+
+    dataset_count = len(datasets)
+    avg_rows_per_dataset = float(total_raw_rows_uploaded / dataset_count) if dataset_count else 0.0
+    avg_cols_per_dataset = float(total_raw_columns_uploaded / dataset_count) if dataset_count else 0.0
+
+    preprocess_success_count = PreprocessRun.query.filter_by(status="success").count()
+    pca_success_count = PCARun.query.filter_by(status="success").count()
+    kmeans_success_count = KMeansRun.query.filter_by(status="success").count()
+    silhouette_success_count = SilhouetteRun.query.filter_by(status="success").count()
+    rf_eval_success_count = RFEvaluation.query.filter_by(status="success").count()
+
+    latest_upload_name = datasets[0].filename if datasets else "-"
+    latest_upload_time = (
+        datasets[0].uploaded_at.strftime("%d-%m-%Y %H:%M")
+        if datasets and datasets[0].uploaded_at
+        else "-"
+    )
+
+    raw_preview_columns = []
+    raw_preview_rows = []
+    selected_dataset_stats = None
+    preview_note = None
+
+    if selected_dataset and selected_dataset.filepath and os.path.exists(selected_dataset.filepath):
+        try:
+            df_raw = pd.read_excel(selected_dataset.filepath)
+            row_count = int(df_raw.shape[0])
+            col_count = int(df_raw.shape[1])
+            preview_df = df_raw.head(20).copy()
+            preview_df = preview_df.where(pd.notnull(preview_df), "-")
+
+            raw_preview_columns = [str(c) for c in preview_df.columns]
+            raw_preview_rows = preview_df.astype(str).values.tolist()
+
+            selected_dataset_stats = {
+                "row_count": row_count,
+                "col_count": col_count,
+                "preview_count": int(len(raw_preview_rows)),
+                "uploaded_at": selected_dataset.uploaded_at.strftime("%d-%m-%Y %H:%M")
+                if selected_dataset.uploaded_at
+                else "-",
+            }
+        except Exception:
+            preview_note = "Data mentah tidak dapat dibaca dari file dataset terpilih."
+    elif selected_dataset:
+        preview_note = "File dataset terpilih tidak ditemukan di server."
+
+    return render_template(
+        "pages/index.html",
+        datasets=datasets,
+        selected_dataset=selected_dataset,
+        selected_dataset_id=selected_dataset_id,
+        dataset_count=dataset_count,
+        total_raw_rows_uploaded=total_raw_rows_uploaded,
+        avg_rows_per_dataset=avg_rows_per_dataset,
+        avg_cols_per_dataset=avg_cols_per_dataset,
+        missing_files_count=missing_files_count,
+        latest_upload_name=latest_upload_name,
+        latest_upload_time=latest_upload_time,
+        preprocess_success_count=preprocess_success_count,
+        pca_success_count=pca_success_count,
+        silhouette_success_count=silhouette_success_count,
+        kmeans_success_count=kmeans_success_count,
+        rf_eval_success_count=rf_eval_success_count,
+        upload_rows=upload_rows,
+        raw_preview_columns=raw_preview_columns,
+        raw_preview_rows=raw_preview_rows,
+        selected_dataset_stats=selected_dataset_stats,
+        preview_note=preview_note,
+    )
 
 # ==========================================
 # ROUTE: DASHBOARD (Placeholder)
 # ==========================================
 @app.route("/dashboard")
 def dashboard():
-    return render_template("dashboard.html")
+    # Gunakan data context yang sama dengan halaman index dashboard.
+    return index()
 
 # ==========================================
 # ROUTE: EVALUATION METRICS
