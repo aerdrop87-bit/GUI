@@ -1,14 +1,15 @@
 # ==========================================
 # CLUSTERING SERVICE
 # ==========================================
-# Mengikuti alur Colab:
+# Mengikuti alur Manual:
 # 1) Ambil data PCA1..PCAk dari output PCA (sheet PCA_k atau PCA_Scores)
 # 2) Silhouette score untuk menentukan K optimal
 # 3) KMeans clustering (init k-means++ atau manual dari baris tertentu)
+#  3.1) manual jika ingin demo proses iterasi dari titik tertentu.
 # 4) Simpan output ke Excel (data+cluster, centroid akhir, jumlah anggota)
 #
 # Catatan:
-# - PCA Anda menyimpan sheet "PCA_{k}" (mis: PCA_4) dan "PCA_Scores"
+# - PCA menyimpan sheet "PCA_{k}" (mis: PCA_4) dan "PCA_Scores"
 # - Clustering default pakai 4 komponen (PCA1..PCA4)
 
 from __future__ import annotations
@@ -116,7 +117,7 @@ def run_silhouette(
 
 
 # ==========================================================
-# NEW: KMeans dengan log iterasi (untuk visualisasi di HTML)
+# KMeans dengan log iterasi (untuk visualisasi)
 # ==========================================================
 
 def _kmeans_plus_plus_init(X: np.ndarray, k: int, random_state: int = 42) -> np.ndarray:

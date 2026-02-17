@@ -1,92 +1,64 @@
-<!-- HEADER -->
-<header class="w-full h-16 bg-white border-b border-gray-200 shadow-sm flex items-center justify-between px-6">
+﻿{% set path = request.path or '/' %}
+{% set route_title = 'Ringkasan Dashboard' %}
+{% set route_group = 'Dashboard' %}
 
-    <!-- LEFT : TITLE + BREADCRUMB -->
-    <div class="flex flex-col">
-        {% set page_title = 'Ringkasan Dashboard' %}
-        {% set breadcrumb = 'Home' %}
-        {% if request.path == '/upload' %}
-            {% set page_title = 'Unggah Dataset' %}
-            {% set breadcrumb = 'Upload' %}
-        {% elif request.path == '/preprocessing' %}
-            {% set page_title = 'Preprocessing' %}
-            {% set breadcrumb = 'Preprocessing' %}
-        {% elif request.path == '/pca' %}
-            {% set page_title = 'Analisis PCA' %}
-            {% set breadcrumb = 'PCA' %}
-        {% elif request.path == '/clustering' %}
-            {% set page_title = 'Hasil Clustering' %}
-            {% set breadcrumb = 'Clustering' %}
-        {% elif request.path == '/rf' %}
-            {% set page_title = 'Prediksi Random Forest' %}
-            {% set breadcrumb = 'Random Forest' %}
-        {% elif request.path == '/evaluasi' %}
-            {% set page_title = 'Metrik Evaluasi' %}
-            {% set breadcrumb = 'Evaluasi' %}
-        {% elif request.path == '/visualisasi' %}
-            {% set page_title = 'Visualisasi Data' %}
-            {% set breadcrumb = 'Visualisasi' %}
-        {% elif request.path == '/unduh' %}
-            {% set page_title = 'Unduh Laporan' %}
-            {% set breadcrumb = 'Unduh' %}
-        {% elif request.path == '/pengaturan' %}
-            {% set page_title = 'Pengaturan' %}
-            {% set breadcrumb = 'Pengaturan' %}
-        {% endif %}
+{% if path == '/' or path.startswith('/dashboard') %}
+    {% set route_title = 'Ringkasan Dashboard' %}
+    {% set route_group = 'Dashboard' %}
+{% elif path.startswith('/upload') %}
+    {% set route_title = 'Unggah Dataset' %}
+    {% set route_group = 'Upload' %}
+{% elif path.startswith('/preprocessing') %}
+    {% set route_title = 'Preprocessing' %}
+    {% set route_group = 'Preprocessing' %}
+{% elif path.startswith('/pca') %}
+    {% set route_title = 'Analisis PCA' %}
+    {% set route_group = 'PCA' %}
+{% elif path.startswith('/clustering') %}
+    {% set route_title = 'Hasil Clustering' %}
+    {% set route_group = 'Clustering' %}
+{% elif path.startswith('/rf') %}
+    {% set route_title = 'Prediksi Random Forest' %}
+    {% set route_group = 'Random Forest' %}
+{% elif path.startswith('/evaluasi') %}
+    {% set route_title = 'Metrik Evaluasi' %}
+    {% set route_group = 'Evaluasi' %}
+{% elif path.startswith('/visualisasi') %}
+    {% set route_title = 'Visualisasi Data' %}
+    {% set route_group = 'Visualisasi' %}
+{% elif path.startswith('/unduh') %}
+    {% set route_title = 'Unduh Laporan' %}
+    {% set route_group = 'Unduh' %}
+{% elif path.startswith('/pengaturan') %}
+    {% set route_title = 'Pengaturan' %}
+    {% set route_group = 'Pengaturan' %}
+{% endif %}
 
-        <h1 class="text-lg font-semibold text-gray-900">
-            {{ page_title }}
-        </h1>
+{% set explicit_title = '' %}
+{% if self is defined and self.page_title is defined %}
+    {% set explicit_title = self.page_title() | striptags | trim %}
+{% endif %}
+{% set final_title = explicit_title if explicit_title else route_title %}
 
-        <span class="text-sm text-blue-600">
-            {{ breadcrumb }}
-        </span>
-    </div>
+<header class="w-full h-16 border-b border-slate-200 bg-white px-6 py-4 fixed">
+    <div class="flex h-full items-center justify-between gap-4">
+        <div class="min-w-0">
+            <h1 class="truncate text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">{{ final_title }}</h1>
+            <div class="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                <span>Home</span>
+                <span class="text-slate-300">/</span>
+                <span class="font-medium text-slate-600">{{ route_group }}</span>
+            </div>
+        </div>
 
-    <!-- RIGHT : STATUS + ICON + USER -->
-    <div class="flex items-center gap-4">
-
-        <!-- STATUS -->
-        <!-- Fungsi Status Siap: Toggle status sistem antara "Siap" dan "Tidak Siap" dengan animasi dan update real-time -->
-        <!-- <div class="flex items-center gap-2 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg text-sm">
-            <span class="w-2.5 h-2.5 bg-green-600 rounded-full"></span>
-            Siap
-        </div> -->
-
-        <!-- NOTIFICATION -->
-        <!-- Fungsi Notifikasi: Dropdown untuk menampilkan daftar notifikasi, mark as read, dan navigasi ke halaman terkait -->
-        <!-- <button class="relative p-2 rounded-lg hover:bg-gray-100">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-600" fill="none"
-                 viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11
-                         a6.002 6.002 0 00-4-5.659V5
-                         a2 2 0 10-4 0v.341C7.67 6.165
-                         6 8.388 6 11v3.159c0 .538-.214
-                         1.055-.595 1.436L4 17h5m6 0v1
-                         a3 3 0 11-6 0v-1m6 0H9"/>
-            </svg>
-
-            <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full">
-                3
+        <div class="flex items-center gap-2 sm:gap-3">
+            <span class="hidden rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-700 lg:inline-flex">
+                {{ request.endpoint or 'route' }}
             </span>
-        </button> -->
-
-        <!-- USER -->
-        <!-- Fungsi Profil: Dropdown menu untuk profil user dengan opsi logout, settings, dan informasi akun -->
-        <!-- <div class="flex items-center gap-3 border-l pl-4">
-
-            <div class="text-right">
-                <p class="text-sm font-medium text-gray-900">Admin User</p>
-                <p class="text-xs text-gray-500">Data Scientist</p>
-            </div>
-
-            <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-semibold">
-                AU
-            </div>
-
-        </div>-->
-
+            <span class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                Sistem Aktif
+            </span>
+        </div>
     </div>
-
 </header>

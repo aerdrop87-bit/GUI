@@ -1,115 +1,220 @@
-{% extends "layouts.html" %}
+﻿{% extends "layouts.html" %}
 {% block title %}Metrik Evaluasi{% endblock %}
 {% block page_title %}Metrik Evaluasi{% endblock %}
 
 {% block content %}
+{% set card_cls = "rounded-2xl border border-slate-200 bg-white shadow-sm p-6" %}
+{% set input_cls = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100" %}
+
 <div class="space-y-6">
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-2">Tujuan Halaman Metrik Evaluasi</h2>
-    <p class="text-sm text-gray-600">
-      Halaman ini merangkum kualitas hasil dari setiap tahap utama: preprocessing, PCA,
-      silhouette, KMeans, dan prediksi Random Forest. Tujuannya agar user tidak perlu
-      membuka banyak menu untuk menilai apakah pipeline sudah siap dipakai.
-    </p>
-  </div>
 
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Pilih Dataset</h3>
-    <select name="dataset_id"
-            class="w-full md:w-96 border rounded-xl p-3 text-sm"
-            onchange="window.location='{{ url_for('evaluasi') }}?dataset_id=' + this.value;">
-      <option value="">-- Pilih Dataset --</option>
-      {% for d in datasets %}
-      <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>
-        {{ d.filename }}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
+    <section class="{{ card_cls }} bg-gradient-to-br from-slate-50 via-white to-cyan-50">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-end">
+            <div>
+                <h2 class="text-xl font-semibold text-slate-900">Ringkasan Metrik Evaluasi Pipeline</h2>
+                <p class="mt-1 text-sm text-slate-600">Halaman ini merangkum kualitas preprocessing, PCA, clustering, dan evaluasi RF agar keputusan model lebih cepat dan jelas.</p>
+            </div>
+            <div>
+                <label class="mb-1.5 block text-sm font-medium text-slate-600">Dataset</label>
+                <select name="dataset_id" class="{{ input_cls }}"
+                        onchange="window.location='{{ url_for('evaluasi') }}?dataset_id=' + this.value;">
+                    <option value="">-- Pilih Dataset --</option>
+                    {% for d in datasets %}
+                    <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>{{ d.filename }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </section>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <p class="text-sm text-gray-500">Status Preprocessing</p>
-      <p class="text-xl font-bold text-gray-900 mt-1">{{ 'Siap' if preprocess_run else 'Belum ada' }}</p>
-      {% if preprocess_run %}<p class="text-xs text-gray-500 mt-2">Run #{{ preprocess_run.id }} · {{ preprocess_run.method }}</p>{% endif %}
-    </div>
+    <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div class="{{ card_cls }} p-5">
+            <p class="text-sm text-slate-500">Status Preprocessing</p>
+            <p class="mt-1 text-xl font-semibold text-slate-900">{{ 'Siap' if preprocess_run else 'Belum ada' }}</p>
+            {% if preprocess_run %}
+            <p class="mt-2 text-xs text-slate-500">Run #{{ preprocess_run.id }} &middot; {{ preprocess_run.method }}</p>
+            {% endif %}
+        </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <p class="text-sm text-gray-500">Kualitas PCA</p>
-      <p class="text-xl font-bold text-gray-900 mt-1">
-        {% if pca_run and pca_run.cumulative_variance %}
-          {{ '%.2f'|format((pca_run.cumulative_variance[-1] or 0) * 100) }}%
-        {% else %}
-          -
+        <div class="{{ card_cls }} p-5">
+            <p class="text-sm text-slate-500">Kualitas PCA</p>
+            <p class="mt-1 text-xl font-semibold text-slate-900">
+                {% if pca_run and pca_run.cumulative_variance %}
+                    {{ '%.2f'|format((pca_run.cumulative_variance[-1] or 0) * 100) }}%
+                {% else %}
+                    -
+                {% endif %}
+            </p>
+            <p class="mt-2 text-xs text-slate-500">Cumulative explained variance</p>
+        </div>
+
+        <div class="{{ card_cls }} p-5">
+            <p class="text-sm text-slate-500">Silhouette Best K</p>
+            <p class="mt-1 text-xl font-semibold text-slate-900">{{ silhouette_run.best_k if silhouette_run else '-' }}</p>
+            {% if silhouette_run %}
+            <p class="mt-2 text-xs text-slate-500">Range K {{ silhouette_run.k_min }}-{{ silhouette_run.k_max }}</p>
+            {% endif %}
+        </div>
+
+        <div class="{{ card_cls }} p-5">
+            <p class="text-sm text-slate-500">KMeans Aktif</p>
+            <p class="mt-1 text-xl font-semibold text-slate-900">{% if kmeans_run %}K={{ kmeans_run.k }}{% else %}-{% endif %}</p>
+            {% if kmeans_run %}
+            <p class="mt-2 text-xs text-slate-500">Run #{{ kmeans_run.id }} &middot; {{ kmeans_run.init_method }}</p>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if rf_test_metrics or rf_train_metrics %}
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {% for split_name, metrics in [('Test', rf_test_metrics), ('Train', rf_train_metrics)] %}
+        {% if metrics %}
+        <article class="{{ card_cls }}">
+            <h3 class="mb-4 text-lg font-semibold text-slate-900">State Metrik RF {{ split_name }}</h3>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Accuracy</p>
+                    <p class="mt-1 text-xl font-semibold text-slate-900">{{ '%.4f'|format(metrics.accuracy or 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Proporsi prediksi yang benar dari seluruh data.</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Precision</p>
+                    <p class="mt-1 text-xl font-semibold text-slate-900">{{ '%.4f'|format(metrics.precision or 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Ketepatan prediksi positif per kelas (macro avg).</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Recall</p>
+                    <p class="mt-1 text-xl font-semibold text-slate-900">{{ '%.4f'|format(metrics.recall or 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Kemampuan menangkap label aktual per kelas (macro avg).</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">F1-Score</p>
+                    <p class="mt-1 text-xl font-semibold text-slate-900">{{ '%.4f'|format(metrics.f1_score or 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Rata-rata harmonik precision dan recall (macro avg).</p>
+                </div>
+            </div>
+        </article>
         {% endif %}
-      </p>
-      <p class="text-xs text-gray-500 mt-2">Cumulative explained variance</p>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if confusion_test or confusion_train %}
+    <section class="{{ card_cls }}">
+        <h3 class="text-lg font-semibold text-slate-900">Confusion Matrix</h3>
+        <p class="mt-1 text-sm text-slate-600">Nilai diagonal <span class="font-semibold text-emerald-700">(hijau)</span> mewakili prediksi yang benar. Nilai di luar diagonal menunjukkan kesalahan klasifikasi.</p>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {% for cm_title, cm_data in [("Data Test", confusion_test), ("Data Train", confusion_train)] %}
+            {% if cm_data %}
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+                <h4 class="mb-3 text-sm font-semibold text-slate-800">{{ cm_title }}</h4>
+                <div class="overflow-x-auto rounded-lg border border-slate-200">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-600">
+                            <tr>
+                                <th class="px-3 py-2 text-left font-semibold">Aktual \ Prediksi</th>
+                                {% for lbl in cm_data.labels %}
+                                <th class="px-3 py-2 text-center font-semibold">{{ lbl }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            {% for row in cm_data.matrix %}
+                            {% set row_idx = loop.index0 %}
+                            <tr>
+                                <td class="px-3 py-2 font-semibold text-slate-700">{{ cm_data.labels[row_idx] }}</td>
+                                {% for cell in row %}
+                                <td class="px-3 py-2 text-center font-medium {% if loop.index0 == row_idx %}bg-emerald-50 text-emerald-700{% else %}text-slate-700{% endif %}">{{ cell }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mt-2 text-xs text-slate-500">Total data: {{ cm_data.total }} &middot; Prediksi benar: {{ cm_data.correct }}</p>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if rf_eval_test or rf_eval_train %}
+    <section class="{{ card_cls }}">
+        <h3 class="text-lg font-semibold text-slate-900">Pre-Cluster Classification Report</h3>
+        <p class="mt-1 text-sm text-slate-600">Laporan per kelas untuk hasil evaluasi RF pada data test dan train.</p>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {% for report_title, eval_obj in [("Data Test", rf_eval_test), ("Data Train", rf_eval_train)] %}
+            {% if eval_obj and eval_obj.classification_report %}
+            {% set rep = eval_obj.classification_report %}
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+                <h4 class="mb-3 text-sm font-semibold text-slate-800">{{ report_title }}</h4>
+                <div class="overflow-x-auto rounded-lg border border-slate-200">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 text-left text-slate-600">
+                            <tr>
+                                <th class="px-3 py-2 font-semibold">Label</th>
+                                <th class="px-3 py-2 font-semibold">Precision</th>
+                                <th class="px-3 py-2 font-semibold">Recall</th>
+                                <th class="px-3 py-2 font-semibold">F1-Score</th>
+                                <th class="px-3 py-2 font-semibold">Support</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-slate-700">
+                            {% for lbl in ["C1", "C2", "C3"] %}
+                            {% if rep[lbl] is defined %}
+                            <tr>
+                                <td class="px-3 py-2 font-medium">{{ lbl }}</td>
+                                <td class="px-3 py-2">{{ '%.4f'|format(rep[lbl]["precision"] or 0) }}</td>
+                                <td class="px-3 py-2">{{ '%.4f'|format(rep[lbl]["recall"] or 0) }}</td>
+                                <td class="px-3 py-2">{{ '%.4f'|format(rep[lbl]["f1-score"] or 0) }}</td>
+                                <td class="px-3 py-2">{{ rep[lbl]["support"] }}</td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                            {% if rep["macro avg"] is defined %}
+                            <tr class="bg-slate-50">
+                                <td class="px-3 py-2 font-semibold">Macro Avg</td>
+                                <td class="px-3 py-2">{{ '%.4f'|format(rep["macro avg"]["precision"] or 0) }}</td>
+                                <td class="px-3 py-2">{{ '%.4f'|format(rep["macro avg"]["recall"] or 0) }}</td>
+                                <td class="px-3 py-2">{{ '%.4f'|format(rep["macro avg"]["f1-score"] or 0) }}</td>
+                                <td class="px-3 py-2">{{ rep["macro avg"]["support"] }}</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% set final_acc = (rf_test_metrics.accuracy if rf_test_metrics else (rf_train_metrics.accuracy if rf_train_metrics else None)) %}
+    {% set final_f1 = (rf_test_metrics.f1_score if rf_test_metrics else (rf_train_metrics.f1_score if rf_train_metrics else None)) %}
+    <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+        <h3 class="text-lg font-semibold text-emerald-900">Kesimpulan Evaluasi</h3>
+        {% if final_acc is not none and final_f1 is not none %}
+            {% if final_acc >= 0.80 and final_f1 >= 0.80 %}
+            <p class="mt-2 text-sm text-emerald-800">Model menunjukkan performa yang baik pada metrik utama (Accuracy dan F1-Score sudah tinggi). Pipeline dapat dipakai untuk analisis lanjutan dengan monitoring berkala.</p>
+            {% elif final_acc >= 0.65 and final_f1 >= 0.65 %}
+            <p class="mt-2 text-sm text-emerald-800">Performa model sudah cukup stabil, tetapi masih ada ruang peningkatan. Disarankan optimasi split, ambang ruleset, atau validasi ulang data fitur PCA.</p>
+            {% else %}
+            <p class="mt-2 text-sm text-emerald-800">Performa model masih rendah. Disarankan evaluasi ulang tahap preprocessing, komponen PCA, dan kualitas label cluster sebelum deployment.</p>
+            {% endif %}
+        {% else %}
+        <p class="mt-2 text-sm text-emerald-800">Belum ada metrik RF yang cukup untuk menyusun kesimpulan kuantitatif. Jalankan evaluasi RF terlebih dahulu.</p>
+        {% endif %}
+    </section>
+
+    {% if selected_dataset and not preprocess_run and not pca_run and not silhouette_run and not kmeans_run and not rf_eval_train and not rf_eval_test %}
+    <div class="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+        Dataset dipilih, namun belum ada hasil pipeline yang bisa dievaluasi.
     </div>
+    {% endif %}
 
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <p class="text-sm text-gray-500">Silhouette (Best K)</p>
-      <p class="text-xl font-bold text-gray-900 mt-1">{{ silhouette_run.best_k if silhouette_run else '-' }}</p>
-      {% if silhouette_run %}<p class="text-xs text-gray-500 mt-2">Range K {{ silhouette_run.k_min }}-{{ silhouette_run.k_max }}</p>{% endif %}
-    </div>
-
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <p class="text-sm text-gray-500">RF Test Accuracy</p>
-      <p class="text-xl font-bold text-gray-900 mt-1">
-        {% if rf_eval_test and rf_eval_test.accuracy is not none %}{{ '%.4f'|format(rf_eval_test.accuracy) }}{% else %}-{% endif %}
-      </p>
-      <p class="text-xs text-gray-500 mt-2">Akurasi model pada data uji</p>
-    </div>
-  </div>
-
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Fungsi yang Sebaiknya Ada di Metrik Evaluasi</h3>
-    <ul class="list-disc pl-5 text-sm text-gray-700 space-y-2">
-      <li>Validasi kelengkapan pipeline (upload → preprocessing → PCA → clustering → RF).</li>
-      <li>Ringkasan metrik inti per tahap (variance PCA, skor silhouette, distribusi cluster, accuracy/macro F1).</li>
-      <li>Perbandingan train vs test untuk mendeteksi overfitting pada tahap prediksi.</li>
-      <li>Riwayat run terbaru per dataset untuk audit dan reproduksibilitas.</li>
-      <li>Status kualitas data proses (jumlah fitur, komponen terpilih, parameter KMeans, ruleset RF).</li>
-      <li>Akses cepat ke output file evaluasi sebagai dasar menu Unduh Laporan.</li>
-    </ul>
-  </div>
-
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Apa Saja yang Ditampilkan di Halaman Ini</h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
-      <div class="p-4 rounded-xl bg-gray-50">
-        <p class="font-semibold mb-2">A. Ringkasan KPI</p>
-        <ul class="list-disc pl-5 space-y-1">
-          <li>Status preprocessing terbaru.</li>
-          <li>Explained variance kumulatif PCA.</li>
-          <li>Best K hasil silhouette.</li>
-          <li>Akurasi & macro F1 train/test Random Forest.</li>
-        </ul>
-      </div>
-
-      <div class="p-4 rounded-xl bg-gray-50">
-        <p class="font-semibold mb-2">B. Detail Konfigurasi</p>
-        <ul class="list-disc pl-5 space-y-1">
-          <li>Fitur yang dipakai pada preprocessing.</li>
-          <li>Komponen PCA yang dipilih.</li>
-          <li>Parameter KMeans (K, init, iterasi).</li>
-          <li>Ruleset/ambang RF yang aktif.</li>
-        </ul>
-      </div>
-
-      <div class="p-4 rounded-xl bg-gray-50 md:col-span-2">
-        <p class="font-semibold mb-2">C. Koneksi ke Menu Lain</p>
-        <ul class="list-disc pl-5 space-y-1">
-          <li>Input dari: unggah dataset, preprocessing, PCA, clustering, dan RF.</li>
-          <li>Output ke: Visualisasi Data (grafik metrik), Unduh Laporan (export KPI), Pengaturan (threshold/aturan evaluasi).</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
-  {% if selected_dataset and not preprocess_run and not pca_run and not silhouette_run and not kmeans_run and not rf_eval_train and not rf_eval_test %}
-  <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
-    Dataset dipilih, namun belum ada hasil pipeline yang bisa dievaluasi.
-  </div>
-  {% endif %}
 </div>
 {% endblock %}

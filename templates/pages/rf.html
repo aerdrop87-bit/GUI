@@ -1,370 +1,329 @@
-{% extends "layouts.html" %}
+﻿{% extends "layouts.html" %}
 {% block title %}Random Forest Manual{% endblock %}
 {% block page_title %}Random Forest{% endblock %}
 
 {% block content %}
+{% set card_cls = "rounded-2xl border border-slate-200 bg-white shadow-sm p-6" %}
+{% set input_cls = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100" %}
+{% set label_cls = "mb-1.5 block text-sm font-medium text-slate-600" %}
 
-<!-- ================= FLASH MESSAGE ================= -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-    {% for category, message in messages %}
-    <div class="mb-4 p-4 rounded-xl
-        {% if category == 'success' %}
-            bg-green-100 text-green-700
-        {% else %}
-            bg-red-100 text-red-700
-        {% endif %}">
-        {{ message }}
-    </div>
-    {% endfor %}
-{% endif %}
-{% endwith %}
+<div class="space-y-6">
 
-<!-- ================= RUN RF ================= -->
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-4">
-        Jalankan Random Forest Manual + Evaluasi (Train & Test)
-    </h2>
-
-    <!-- # tambahan: info kompatibilitas -->
-    <div class="mb-4 p-4 bg-blue-50 text-blue-800 rounded-xl text-sm">
-        <b>Catatan:</b> RF manual saat ini hanya mendukung <b>3 cluster (C1, C2, C3)</b> dan membutuhkan kolom <b>PCA1..PCA4</b>.
-        Pastikan Anda menjalankan KMeans dengan <b>K=3</b> serta PCA minimal 4 komponen.
-    </div>
-
-    <form method="POST" action="{{ url_for('rf.index', dataset_id=selected_dataset_id) }}">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-
-            <!-- DATASET -->
-            <div class="md:col-span-2">
-                <label class="block text-sm text-gray-600 mb-1">Dataset</label>
-                <select name="dataset_id"
-                        class="w-full border rounded-xl p-3 text-sm"
-                        required
-                        onchange="window.location='{{ url_for('rf.index') }}?dataset_id=' + this.value;">
-                    <option value="">-- Pilih Dataset --</option>
-                    {% for d in datasets %}
-                    <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>
-                        {{ d.filename }}
-                    </option>
-                    {% endfor %}
-                </select>
-
-                <!-- ============================ -->
-                <!-- # sebelum -->
-                <!-- <p class="text-xs text-gray-500 mt-1">
-                    RF otomatis memakai <b>KMeansRun</b> terakhir yang sukses dari dataset terpilih.
-                </p> -->
-
-                <!-- # sesudah -->
-                <p class="text-xs text-gray-500 mt-1">
-                    RF otomatis memakai <b>KMeansRun</b> terakhir yang sukses <b>dengan K=3</b> dari dataset terpilih.
-                </p>
-            </div>
-
-            <!-- SPLIT RATIO -->
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Train Ratio</label>
-                <input type="number" name="train_ratio" value="0.8" min="0.5" max="0.95" step="0.05"
-                       class="w-full border rounded-xl p-3 text-sm" />
-                <p class="text-xs text-gray-500 mt-1">Contoh Colab: 0.8 (260 train, 65 test dari 325).</p>
-            </div>
-
-            <!-- RANDOM STATE -->
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Random State</label>
-                <input type="number" name="random_state" value="42" min="0"
-                       class="w-full border rounded-xl p-3 text-sm" />
-                <p class="text-xs text-gray-500 mt-1">Agar split selalu konsisten.</p>
-            </div>
-
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="rounded-xl border px-4 py-3 text-sm font-medium {% if category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border-rose-200 bg-rose-50 text-rose-700{% endif %}">
+            {{ message }}
         </div>
-
-        <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <!-- SPLIT METHOD -->
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Split Method</label>
-                <select name="split_method" class="w-full border rounded-xl p-3 text-sm">
-                    <option value="colab_like" selected>Colab-like (shuffle + ambil N pertama)</option>
-                    <option value="stratified">Stratified (lebih stabil distribusi label)</option>
-                </select>
-                <p class="text-xs text-gray-500 mt-1">
-                    Jika ingin mirip Colab, pilih <b>Colab-like</b>.
-                </p>
-            </div>
-
-            <!-- ALIGNMENT MODE -->
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Alignment</label>
-                <select name="alignment_mode" class="w-full border rounded-xl p-3 text-sm">
-                    <option value="auto" selected>Auto (perbaiki mapping cluster + flip tanda PCA)</option>
-                    <option value="none">Off (tanpa auto)</option>
-                </select>
-                <p class="text-xs text-gray-500 mt-1">
-                    Auto akan membuat hasil RF mendekati Colab (mengatasi label cluster tertukar & PCA sign flip).
-                </p>
-            </div>
-
-            <!-- BUTTON -->
-            <div class="flex items-end">
-                <button type="submit"
-                        class="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">
-                    Jalankan RF + Evaluasi
-                </button>
-            </div>
-        </div>
-
-        <!-- AMBANG MODE -->
-        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Ambang (Ruleset)</label>
-                <select name="ambang_mode" id="ambang_mode"
-                        class="w-full border rounded-xl p-3 text-sm"
-                        onchange="toggleAmbang();">
-                    <option value="default" selected>Default (sesuai Colab)</option>
-                    <option value="custom">Custom (JSON)</option>
-                </select>
-                <p class="text-xs text-gray-500 mt-1">Default memakai ruleset versi: {{ ruleset.version }}</p>
-            </div>
-        </div>
-
-        <!-- AMBANG JSON -->
-        <div id="ambang_json_wrap" class="mt-4 hidden">
-            <label class="block text-sm text-gray-600 mb-1">Ambang JSON</label>
-            <textarea name="ambang_json" rows="10"
-                      class="w-full border rounded-xl p-3 text-xs font-mono">{{ ruleset.ambang | tojson(indent=2) }}</textarea>
-            <p class="text-xs text-gray-500 mt-1">
-                Struktur wajib: PCA1..PCA4, masing-masing punya low & mid (float).
-            </p>
-        </div>
-
-    </form>
-
-    {% if last_kmeans %}
-    <div class="mt-4 p-4 bg-gray-50 rounded-xl text-sm text-gray-700">
-        <div><b>KMeans terakhir:</b> Run #{{ last_kmeans.id }} (k={{ last_kmeans.k }}) • {{ last_kmeans.created_at }}</div>
-        <div class="text-xs text-gray-500 mt-1">Output: {{ last_kmeans.output_path }}</div>
-    </div>
-    {% elif selected_dataset_id %}
-    <div class="mt-4 p-4 bg-red-50 rounded-xl text-sm text-red-700">
-        <!-- ============================ -->
-        <!-- # sebelum -->
-        <!-- Dataset ini belum punya KMeans sukses. Jalankan clustering dulu. -->
-
-        <!-- # sesudah -->
-        Dataset ini belum punya KMeans sukses <b>dengan K=3</b>. Jalankan clustering dulu (K=3).
-    </div>
+        {% endfor %}
     {% endif %}
+    {% endwith %}
 
-</div>
-
-<!-- ================= SPLIT INFO ================= -->
-{% if last_split %}
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-2">Data Split Terakhir</h2>
-    <p class="text-sm text-gray-600 mb-4">
-        Split #{{ last_split.id }} • Metode: {{ last_split.split_method }} • Train Ratio: {{ last_split.train_ratio }} • Random State: {{ last_split.random_state }}
-    </p>
-
-    <div class="flex flex-wrap gap-3">
-        <a class="inline-block px-4 py-2 bg-gray-800 text-white rounded-xl hover:bg-gray-900 transition"
-           href="{{ url_for('rf.download_split', split_id=last_split.id, which='train') }}">
-            Download Train
-        </a>
-        <a class="inline-block px-4 py-2 bg-gray-800 text-white rounded-xl hover:bg-gray-900 transition"
-           href="{{ url_for('rf.download_split', split_id=last_split.id, which='test') }}">
-            Download Test
-        </a>
-    </div>
-</div>
-{% endif %}
-
-<!-- ================= LATEST EVAL ================= -->
-{% if last_eval_train or last_eval_test %}
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-
-    {% if last_eval_train %}
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <div class="flex items-center justify-between mb-2">
-            <h2 class="text-xl font-bold text-gray-900">Evaluasi Train</h2>
-            <a class="text-blue-600 hover:underline"
-               href="{{ url_for('rf.download_eval', eval_id=last_eval_train.id) }}">
-                Download
-            </a>
+    <section class="{{ card_cls }} bg-gradient-to-br from-slate-50 via-white to-cyan-50">
+        <div class="mb-5">
+            <h2 class="text-xl font-semibold text-slate-900">Jalankan Random Forest Manual + Evaluasi</h2>
+            <p class="mt-1 text-sm text-slate-600">Konfigurasi train/test split, aturan ambang, lalu jalankan evaluasi otomatis untuk data train dan test.</p>
         </div>
-        <p class="text-sm text-gray-600 mb-4">
-            Eval #{{ last_eval_train.id }} • Ruleset #{{ last_eval_train.ruleset_id }} • {{ last_eval_train.created_at }}
+
+        <div class="mb-5 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-800">
+            <span class="font-semibold">Catatan:</span>
+            RF manual saat ini mendukung <span class="font-semibold">3 cluster (C1, C2, C3)</span> dan membutuhkan kolom <span class="font-semibold">PCA1..PCA4</span>.
+            Pastikan KMeans dijalankan dengan <span class="font-semibold">K=3</span> dan PCA minimal 4 komponen.
+        </div>
+
+        <form method="POST" action="{{ url_for('rf.index', dataset_id=selected_dataset_id) }}" class="space-y-4">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <div class="md:col-span-2">
+                    <label class="{{ label_cls }}">Dataset</label>
+                    <select name="dataset_id"
+                            class="{{ input_cls }}"
+                            required
+                            onchange="window.location='{{ url_for('rf.index') }}?dataset_id=' + this.value;">
+                        <option value="">-- Pilih Dataset --</option>
+                        {% for d in datasets %}
+                        <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>
+                            {{ d.filename }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-2 text-xs text-slate-500">
+                        RF otomatis memakai <span class="font-semibold text-slate-700">KMeansRun</span> terakhir yang sukses <span class="font-semibold text-slate-700">dengan K=3</span> dari dataset terpilih.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Train Ratio</label>
+                    <input type="number" name="train_ratio" value="0.8" min="0.5" max="0.95" step="0.05" class="{{ input_cls }}" />
+                    <p class="mt-2 text-xs text-slate-500">Contoh Colab: 0.8 (260 train, 65 test dari 325).</p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Random State</label>
+                    <input type="number" name="random_state" value="42" min="0" class="{{ input_cls }}" />
+                    <p class="mt-2 text-xs text-slate-500">Agar split selalu konsisten.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                    <label class="{{ label_cls }}">Split Method</label>
+                    <select name="split_method" class="{{ input_cls }}">
+                        <option value="colab_like" selected>Colab-like (shuffle + ambil N pertama)</option>
+                        <option value="stratified">Stratified (lebih stabil distribusi label)</option>
+                    </select>
+                    <p class="mt-2 text-xs text-slate-500">Jika ingin mirip Colab, pilih <span class="font-semibold text-slate-700">Colab-like</span>.</p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Alignment</label>
+                    <select name="alignment_mode" class="{{ input_cls }}">
+                        <option value="auto" selected>Auto (mapping cluster + PCA sign flip)</option>
+                        <option value="none">Off (tanpa auto)</option>
+                    </select>
+                    <p class="mt-2 text-xs text-slate-500">Auto membantu mendekatkan hasil RF ke Colab.</p>
+                </div>
+
+                <div class="flex items-end">
+                    <button type="submit"
+                            class="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-700">
+                        Jalankan RF + Evaluasi
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                    <label class="{{ label_cls }}">Ambang (Ruleset)</label>
+                    <select name="ambang_mode" id="ambang_mode" class="{{ input_cls }}" onchange="toggleAmbang();">
+                        <option value="default" selected>Default (sesuai Colab)</option>
+                        <option value="custom">Custom (JSON)</option>
+                    </select>
+                    <p class="mt-2 text-xs text-slate-500">Default memakai ruleset versi: {{ ruleset.version }}</p>
+                </div>
+            </div>
+
+            <div id="ambang_json_wrap" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <label class="{{ label_cls }}">Ambang JSON</label>
+                <textarea name="ambang_json" rows="10"
+                          class="w-full rounded-xl border border-slate-300 bg-white p-3 font-mono text-xs text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100">{{ ruleset.ambang | tojson(indent=2) }}</textarea>
+                <p class="mt-2 text-xs text-slate-500">Struktur wajib: PCA1..PCA4, masing-masing memiliki `low` dan `mid` (float).</p>
+            </div>
+        </form>
+
+        {% if last_kmeans %}
+        <div class="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            <div><span class="font-semibold text-slate-900">KMeans terakhir:</span> Run #{{ last_kmeans.id }} (k={{ last_kmeans.k }}) &middot; {{ last_kmeans.created_at }}</div>
+            <div class="mt-1 text-xs text-slate-500">Output: {{ last_kmeans.output_path }}</div>
+        </div>
+        {% elif selected_dataset_id %}
+        <div class="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+            Dataset ini belum punya KMeans sukses <span class="font-semibold">dengan K=3</span>. Jalankan clustering dulu (K=3).
+        </div>
+        {% endif %}
+    </section>
+
+    {% if last_split %}
+    <section class="{{ card_cls }}">
+        <h2 class="text-lg font-semibold text-slate-900">Data Split Terakhir</h2>
+        <p class="mt-1 text-sm text-slate-600">
+            Split #{{ last_split.id }} &middot; Metode: {{ last_split.split_method }} &middot; Train Ratio: {{ last_split.train_ratio }} &middot; Random State: {{ last_split.random_state }}
         </p>
 
-        <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
-            <div class="p-3 bg-gray-50 rounded-xl">
-                <div class="text-gray-500">Accuracy</div>
-                <div class="font-semibold text-gray-900">{{ "%.4f"|format(last_eval_train.accuracy or 0) }}</div>
-            </div>
-            <div class="p-3 bg-gray-50 rounded-xl">
-                <div class="text-gray-500">Macro F1</div>
-                <div class="font-semibold text-gray-900">{{ "%.4f"|format(last_eval_train.macro_f1 or 0) }}</div>
-            </div>
+        <div class="mt-4 flex flex-wrap gap-3">
+            <a class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700"
+               href="{{ url_for('rf.download_split', split_id=last_split.id, which='train') }}">
+                Download Train
+            </a>
+            <a class="inline-flex items-center justify-center rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-cyan-500"
+               href="{{ url_for('rf.download_split', split_id=last_split.id, which='test') }}">
+                Download Test
+            </a>
         </div>
+    </section>
+    {% endif %}
 
-        {% set rep = last_eval_train.classification_report %}
-        {% if rep %}
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm border-collapse">
-                <thead>
-                    <tr class="bg-gray-50 text-left text-gray-600">
-                        <th class="px-3 py-2">Label</th>
-                        <th class="px-3 py-2">Precision</th>
-                        <th class="px-3 py-2">Recall</th>
-                        <th class="px-3 py-2">F1</th>
-                        <th class="px-3 py-2">Support</th>
+    {% if last_eval_train or last_eval_test %}
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+
+        {% if last_eval_train %}
+        <article class="{{ card_cls }}">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="text-lg font-semibold text-slate-900">Evaluasi Train</h2>
+                <a class="text-sm font-medium text-cyan-700 transition hover:text-cyan-600 hover:underline"
+                   href="{{ url_for('rf.download_eval', eval_id=last_eval_train.id) }}">
+                    Download
+                </a>
+            </div>
+            <p class="mb-4 text-sm text-slate-600">Eval #{{ last_eval_train.id }} &middot; Ruleset #{{ last_eval_train.ruleset_id }} &middot; {{ last_eval_train.created_at }}</p>
+
+            <div class="mb-4 grid grid-cols-2 gap-3 text-sm">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div class="text-slate-500">Accuracy</div>
+                    <div class="font-semibold text-slate-900">{{ "%.4f"|format(last_eval_train.accuracy or 0) }}</div>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div class="text-slate-500">Macro F1</div>
+                    <div class="font-semibold text-slate-900">{{ "%.4f"|format(last_eval_train.macro_f1 or 0) }}</div>
+                </div>
+            </div>
+
+            {% set rep = last_eval_train.classification_report %}
+            {% if rep %}
+            <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                            <th class="px-3 py-2 font-semibold">Label</th>
+                            <th class="px-3 py-2 font-semibold">Precision</th>
+                            <th class="px-3 py-2 font-semibold">Recall</th>
+                            <th class="px-3 py-2 font-semibold">F1</th>
+                            <th class="px-3 py-2 font-semibold">Support</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        {% for lbl in ["C1", "C2", "C3"] %}
+                        {% if rep[lbl] is defined %}
+                        <tr>
+                            <td class="px-3 py-2 font-medium">{{ lbl }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep[lbl]["precision"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep[lbl]["recall"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep[lbl]["f1-score"]) }}</td>
+                            <td class="px-3 py-2">{{ rep[lbl]["support"] }}</td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                        {% if rep["macro avg"] is defined %}
+                        <tr class="bg-slate-50">
+                            <td class="px-3 py-2 font-semibold">macro avg</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep["macro avg"]["precision"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep["macro avg"]["recall"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep["macro avg"]["f1-score"]) }}</td>
+                            <td class="px-3 py-2">{{ rep["macro avg"]["support"] }}</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </article>
+        {% endif %}
+
+        {% if last_eval_test %}
+        <article class="{{ card_cls }}">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="text-lg font-semibold text-slate-900">Evaluasi Test</h2>
+                <a class="text-sm font-medium text-cyan-700 transition hover:text-cyan-600 hover:underline"
+                   href="{{ url_for('rf.download_eval', eval_id=last_eval_test.id) }}">
+                    Download
+                </a>
+            </div>
+            <p class="mb-4 text-sm text-slate-600">Eval #{{ last_eval_test.id }} &middot; Ruleset #{{ last_eval_test.ruleset_id }} &middot; {{ last_eval_test.created_at }}</p>
+
+            <div class="mb-4 grid grid-cols-2 gap-3 text-sm">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div class="text-slate-500">Accuracy</div>
+                    <div class="font-semibold text-slate-900">{{ "%.4f"|format(last_eval_test.accuracy or 0) }}</div>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div class="text-slate-500">Macro F1</div>
+                    <div class="font-semibold text-slate-900">{{ "%.4f"|format(last_eval_test.macro_f1 or 0) }}</div>
+                </div>
+            </div>
+
+            {% set rep2 = last_eval_test.classification_report %}
+            {% if rep2 %}
+            <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                            <th class="px-3 py-2 font-semibold">Label</th>
+                            <th class="px-3 py-2 font-semibold">Precision</th>
+                            <th class="px-3 py-2 font-semibold">Recall</th>
+                            <th class="px-3 py-2 font-semibold">F1</th>
+                            <th class="px-3 py-2 font-semibold">Support</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        {% for lbl in ["C1", "C2", "C3"] %}
+                        {% if rep2[lbl] is defined %}
+                        <tr>
+                            <td class="px-3 py-2 font-medium">{{ lbl }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep2[lbl]["precision"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep2[lbl]["recall"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep2[lbl]["f1-score"]) }}</td>
+                            <td class="px-3 py-2">{{ rep2[lbl]["support"] }}</td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                        {% if rep2["macro avg"] is defined %}
+                        <tr class="bg-slate-50">
+                            <td class="px-3 py-2 font-semibold">macro avg</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep2["macro avg"]["precision"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep2["macro avg"]["recall"]) }}</td>
+                            <td class="px-3 py-2">{{ "%.4f"|format(rep2["macro avg"]["f1-score"]) }}</td>
+                            <td class="px-3 py-2">{{ rep2["macro avg"]["support"] }}</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </article>
+        {% endif %}
+
+    </section>
+    {% endif %}
+
+    <section class="{{ card_cls }}">
+        <h2 class="mb-4 text-lg font-semibold text-slate-900">Riwayat Evaluasi RF Terbaru</h2>
+
+        <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table class="min-w-full text-sm">
+                <thead class="bg-slate-50 text-left text-slate-600">
+                    <tr>
+                        <th class="px-3 py-2 font-semibold">Eval</th>
+                        <th class="px-3 py-2 font-semibold">KMeansRun</th>
+                        <th class="px-3 py-2 font-semibold">Ruleset</th>
+                        <th class="px-3 py-2 font-semibold">Split</th>
+                        <th class="px-3 py-2 font-semibold">Accuracy</th>
+                        <th class="px-3 py-2 font-semibold">Macro F1</th>
+                        <th class="px-3 py-2 font-semibold">Status</th>
+                        <th class="px-3 py-2 font-semibold">Aksi</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {% for lbl in ["C1","C2","C3"] %}
-                    {% if rep[lbl] is defined %}
-                    <tr class="border-t">
-                        <td class="px-3 py-2 font-medium">{{ lbl }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep[lbl]["precision"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep[lbl]["recall"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep[lbl]["f1-score"]) }}</td>
-                        <td class="px-3 py-2">{{ rep[lbl]["support"] }}</td>
+                <tbody class="divide-y divide-slate-200 text-slate-700">
+                    {% for e in evals %}
+                    <tr>
+                        <td class="px-3 py-2">#{{ e.id }}</td>
+                        <td class="px-3 py-2">#{{ e.kmeans_run_id }}</td>
+                        <td class="px-3 py-2">#{{ e.ruleset_id }}</td>
+                        <td class="px-3 py-2">{{ e.split_type }}</td>
+                        <td class="px-3 py-2">{{ "%.4f"|format(e.accuracy or 0) }}</td>
+                        <td class="px-3 py-2">{{ "%.4f"|format(e.macro_f1 or 0) }}</td>
+                        <td class="px-3 py-2">
+                            {% if e.status == 'success' %}
+                                <span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">success</span>
+                            {% else %}
+                                <span class="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">failed</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-2">
+                            {% if e.status == 'success' and e.output_path %}
+                            <a class="font-medium text-cyan-700 transition hover:text-cyan-600 hover:underline"
+                               href="{{ url_for('rf.download_eval', eval_id=e.id) }}">
+                               Download
+                            </a>
+                            {% else %}
+                            <span class="text-slate-400">-</span>
+                            {% endif %}
+                        </td>
                     </tr>
-                    {% endif %}
                     {% endfor %}
-                    {% if rep["macro avg"] is defined %}
-                    <tr class="border-t bg-gray-50">
-                        <td class="px-3 py-2 font-semibold">macro avg</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep["macro avg"]["precision"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep["macro avg"]["recall"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep["macro avg"]["f1-score"]) }}</td>
-                        <td class="px-3 py-2">{{ rep["macro avg"]["support"] }}</td>
-                    </tr>
-                    {% endif %}
                 </tbody>
             </table>
         </div>
-        {% endif %}
-    </div>
-    {% endif %}
+    </section>
 
-    {% if last_eval_test %}
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <div class="flex items-center justify-between mb-2">
-            <h2 class="text-xl font-bold text-gray-900">Evaluasi Test</h2>
-            <a class="text-blue-600 hover:underline"
-               href="{{ url_for('rf.download_eval', eval_id=last_eval_test.id) }}">
-                Download
-            </a>
-        </div>
-        <p class="text-sm text-gray-600 mb-4">
-            Eval #{{ last_eval_test.id }} • Ruleset #{{ last_eval_test.ruleset_id }} • {{ last_eval_test.created_at }}
-        </p>
-
-        <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
-            <div class="p-3 bg-gray-50 rounded-xl">
-                <div class="text-gray-500">Accuracy</div>
-                <div class="font-semibold text-gray-900">{{ "%.4f"|format(last_eval_test.accuracy or 0) }}</div>
-            </div>
-            <div class="p-3 bg-gray-50 rounded-xl">
-                <div class="text-gray-500">Macro F1</div>
-                <div class="font-semibold text-gray-900">{{ "%.4f"|format(last_eval_test.macro_f1 or 0) }}</div>
-            </div>
-        </div>
-
-        {% set rep2 = last_eval_test.classification_report %}
-        {% if rep2 %}
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm border-collapse">
-                <thead>
-                    <tr class="bg-gray-50 text-left text-gray-600">
-                        <th class="px-3 py-2">Label</th>
-                        <th class="px-3 py-2">Precision</th>
-                        <th class="px-3 py-2">Recall</th>
-                        <th class="px-3 py-2">F1</th>
-                        <th class="px-3 py-2">Support</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for lbl in ["C1","C2","C3"] %}
-                    {% if rep2[lbl] is defined %}
-                    <tr class="border-t">
-                        <td class="px-3 py-2 font-medium">{{ lbl }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep2[lbl]["precision"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep2[lbl]["recall"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep2[lbl]["f1-score"]) }}</td>
-                        <td class="px-3 py-2">{{ rep2[lbl]["support"] }}</td>
-                    </tr>
-                    {% endif %}
-                    {% endfor %}
-                    {% if rep2["macro avg"] is defined %}
-                    <tr class="border-t bg-gray-50">
-                        <td class="px-3 py-2 font-semibold">macro avg</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep2["macro avg"]["precision"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep2["macro avg"]["recall"]) }}</td>
-                        <td class="px-3 py-2">{{ "%.4f"|format(rep2["macro avg"]["f1-score"]) }}</td>
-                        <td class="px-3 py-2">{{ rep2["macro avg"]["support"] }}</td>
-                    </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
-
-</div>
-{% endif %}
-
-<!-- ================= HISTORY ================= -->
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-4">Riwayat Evaluasi RF Terbaru</h2>
-
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm border-collapse">
-            <thead>
-                <tr class="bg-gray-50 text-left text-gray-600">
-                    <th class="px-3 py-2">Eval</th>
-                    <th class="px-3 py-2">KMeansRun</th>
-                    <th class="px-3 py-2">Ruleset</th>
-                    <th class="px-3 py-2">Split</th>
-                    <th class="px-3 py-2">Accuracy</th>
-                    <th class="px-3 py-2">Macro F1</th>
-                    <th class="px-3 py-2">Status</th>
-                    <th class="px-3 py-2">Aksi</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for e in evals %}
-                <tr class="border-t">
-                    <td class="px-3 py-2">#{{ e.id }}</td>
-                    <td class="px-3 py-2">#{{ e.kmeans_run_id }}</td>
-                    <td class="px-3 py-2">#{{ e.ruleset_id }}</td>
-                    <td class="px-3 py-2">{{ e.split_type }}</td>
-                    <td class="px-3 py-2">{{ "%.4f"|format(e.accuracy or 0) }}</td>
-                    <td class="px-3 py-2">{{ "%.4f"|format(e.macro_f1 or 0) }}</td>
-                    <td class="px-3 py-2">
-                        {% if e.status == 'success' %}
-                            <span class="text-green-700 font-medium">success</span>
-                        {% else %}
-                            <span class="text-red-700 font-medium">failed</span>
-                        {% endif %}
-                    </td>
-                    <td class="px-3 py-2">
-                        {% if e.status == 'success' and e.output_path %}
-                        <a class="text-blue-600 hover:underline"
-                           href="{{ url_for('rf.download_eval', eval_id=e.id) }}">
-                           Download
-                        </a>
-                        {% else %}
-                        <span class="text-gray-400">-</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
 </div>
 
 <script>
@@ -377,6 +336,8 @@ function toggleAmbang() {
         wrap.classList.add("hidden");
     }
 }
+
+document.addEventListener("DOMContentLoaded", toggleAmbang);
 </script>
 
 {% endblock %}

@@ -1,455 +1,433 @@
-{% extends "layouts.html" %}
+﻿{% extends "layouts.html" %}
 {% block title %}Clustering{% endblock %}
 {% block page_title %}Clustering{% endblock %}
 
 {% block content %}
+{% set card_cls = "rounded-2xl border border-slate-200 bg-white shadow-sm p-6" %}
+{% set input_cls = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100" %}
+{% set label_cls = "mb-1.5 block text-sm font-medium text-slate-600" %}
 
-<!-- ================= FLASH MESSAGE ================= -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-    {% for category, message in messages %}
-    <div class="mb-4 p-4 rounded-xl
-        {% if category == 'success' %}
-            bg-green-100 text-green-700
-        {% else %}
-            bg-red-100 text-red-700
-        {% endif %}">
-        {{ message }}
-    </div>
-    {% endfor %}
-{% endif %}
-{% endwith %}
+<div class="space-y-6">
 
-<!-- ================= PILIH DATASET ================= -->
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-4">Clustering (Silhouette & KMeans)</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="rounded-xl border px-4 py-3 text-sm font-medium {% if category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border-rose-200 bg-rose-50 text-rose-700{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-            <label class="block text-sm text-gray-600 mb-1">Dataset</label>
-            <select class="w-full border rounded-xl p-3 text-sm"
-                    onchange="if(this.value){ window.location='{{ url_for('clustering.index') }}?dataset_id=' + this.value }">
-                <option value="">-- Pilih Dataset --</option>
-                {% for d in datasets %}
-                <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>
-                    {{ d.filename }}
-                </option>
-                {% endfor %}
-            </select>
-            <p class="text-xs text-gray-500 mt-1">
-                Clustering otomatis memakai <b>PCA terakhir yang sukses</b> dari dataset terpilih.
-            </p>
+    <section class="{{ card_cls }} bg-gradient-to-br from-slate-50 via-white to-cyan-50">
+        <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h2 class="text-xl font-semibold text-slate-900">Clustering Silhouette & KMeans</h2>
+                <p class="mt-1 text-sm text-slate-600">Pilih dataset, cek PCA aktif, lalu jalankan evaluasi K optimal dan KMeans dalam satu alur.</p>
+            </div>
         </div>
 
-        <div>
-            {% if last_pca %}
-                <div class="p-4 bg-gray-50 rounded-xl text-sm text-gray-700">
-                    <div><b>PCA terakhir:</b> Run #{{ last_pca.id }} • Method: {{ last_pca.method }}</div>
-                    <div class="text-xs text-gray-500 mt-1">
-                        Output PCA: {{ last_pca.output_path }}
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div>
+                <label class="{{ label_cls }}">Dataset</label>
+                <select class="{{ input_cls }}"
+                        onchange="if(this.value){ window.location='{{ url_for('clustering.index') }}?dataset_id=' + this.value }">
+                    <option value="">-- Pilih Dataset --</option>
+                    {% for d in datasets %}
+                    <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>
+                        {{ d.filename }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="mt-2 text-xs text-slate-500">Clustering otomatis memakai <span class="font-semibold text-slate-700">PCA terakhir yang sukses</span> dari dataset terpilih.</p>
+            </div>
+
+            <div>
+                {% if last_pca %}
+                    <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                        <div><span class="font-semibold text-slate-900">PCA terakhir:</span> Run #{{ last_pca.id }} &middot; Method: {{ last_pca.method }}</div>
+                        <div class="mt-1 text-xs text-slate-500">Output PCA: {{ last_pca.output_path }}</div>
                     </div>
-                </div>
-            {% else %}
-                {% if selected_dataset_id %}
-                <div class="p-4 bg-red-50 rounded-xl text-sm text-red-700">
-                    Dataset ini belum punya PCA sukses. Jalankan PCA dulu.
-                </div>
+                {% else %}
+                    {% if selected_dataset_id %}
+                    <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                        Dataset ini belum punya PCA sukses. Jalankan PCA dulu.
+                    </div>
+                    {% endif %}
                 {% endif %}
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-{% if last_pca %}
-
-<!-- ================= SILHOUETTE ================= -->
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-4">1) Silhouette (Menentukan K Optimal)</h2>
-
-    <form method="POST" action="{{ url_for('clustering.index', dataset_id=selected_dataset_id) }}">
-        <input type="hidden" name="action" value="silhouette" />
-        <input type="hidden" name="dataset_id" value="{{ selected_dataset_id }}" />
-
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Komponen PCA dipakai</label>
-                <input type="number" name="components_count"
-                       value="{% if last_pca.selected_components %}{{ last_pca.selected_components|length }}{% else %}4{% endif %}"
-                       min="1"
-                       class="w-full border rounded-xl p-3 text-sm" />
-                <p class="text-xs text-gray-500 mt-1">Default mengikuti PCA (PCA1..PCAk).</p>
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">K min</label>
-                <input type="number" name="k_min" value="2" min="2"
-                       class="w-full border rounded-xl p-3 text-sm" />
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">K max</label>
-                <input type="number" name="k_max" value="10" min="2"
-                       class="w-full border rounded-xl p-3 text-sm" />
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Random State</label>
-                <input type="number" name="random_state" value="42"
-                       class="w-full border rounded-xl p-3 text-sm" />
             </div>
         </div>
+    </section>
 
-        <div class="mt-4">
+    {% if last_pca %}
+    <section class="{{ card_cls }}">
+        <div class="mb-4 flex items-center justify-between gap-3">
+            <h2 class="text-lg font-semibold text-slate-900">1) Silhouette: Menentukan K Optimal</h2>
+        </div>
+
+        <form method="POST" action="{{ url_for('clustering.index', dataset_id=selected_dataset_id) }}" class="space-y-4">
+            <input type="hidden" name="action" value="silhouette" />
+            <input type="hidden" name="dataset_id" value="{{ selected_dataset_id }}" />
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                    <label class="{{ label_cls }}">Komponen PCA dipakai</label>
+                    <input type="number" name="components_count"
+                           value="{% if last_pca.selected_components %}{{ last_pca.selected_components|length }}{% else %}4{% endif %}"
+                           min="1"
+                           class="{{ input_cls }}" />
+                    <p class="mt-2 text-xs text-slate-500">Default mengikuti PCA (PCA1..PCAk).</p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">K min</label>
+                    <input type="number" name="k_min" value="2" min="2" class="{{ input_cls }}" />
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">K max</label>
+                    <input type="number" name="k_max" value="10" min="2" class="{{ input_cls }}" />
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Random State</label>
+                    <input type="number" name="random_state" value="42" class="{{ input_cls }}" />
+                </div>
+            </div>
+
             <button type="submit"
-                    class="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">
+                    class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-700">
                 Hitung Silhouette
             </button>
-        </div>
-    </form>
+        </form>
 
-    {% if last_silhouette_for_pca %}
-    <div class="mt-6 p-4 bg-gray-50 rounded-xl">
-        <div class="text-sm text-gray-800">
-            <b>Silhouette terakhir (PCA Run #{{ last_pca.id }}):</b>
-            Best K = <span class="font-semibold">{{ last_silhouette_for_pca.best_k }}</span>
-        </div>
-
-        <div class="overflow-x-auto mt-3">
-            <table class="w-full text-sm border-collapse">
-                <thead>
-                    <tr class="bg-white text-left text-gray-600">
-                        <th class="px-3 py-2">K</th>
-                        <th class="px-3 py-2">Silhouette Score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in last_silhouette_for_pca.scores_by_k %}
-                    <tr class="border-t">
-                        <td class="px-3 py-2">{{ item.k }}</td>
-                        <td class="px-3 py-2">{{ "%.6f"|format(item.score) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
-</div>
-
-<!-- ================= KMEANS ================= -->
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-4">2) KMeans Clustering</h2>
-
-    <form method="POST" action="{{ url_for('clustering.index', dataset_id=selected_dataset_id) }}">
-        <input type="hidden" name="action" value="kmeans" />
-        <input type="hidden" name="dataset_id" value="{{ selected_dataset_id }}" />
-
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Komponen PCA dipakai</label>
-                <input type="number" name="components_count"
-                       value="{% if last_pca.selected_components %}{{ last_pca.selected_components|length }}{% else %}4{% endif %}"
-                       min="1"
-                       class="w-full border rounded-xl p-3 text-sm" />
+        {% if last_silhouette_for_pca %}
+        <div class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div class="text-sm text-slate-800">
+                <span class="font-semibold text-slate-900">Silhouette terakhir (PCA Run #{{ last_pca.id }}):</span>
+                Best K = <span class="font-semibold">{{ last_silhouette_for_pca.best_k }}</span>
             </div>
 
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Jumlah Cluster (K)</label>
-                <input type="number" name="k"
-                       value="{% if last_silhouette_for_pca %}{{ last_silhouette_for_pca.best_k }}{% else %}3{% endif %}"
-                       min="2"
-                       class="w-full border rounded-xl p-3 text-sm" />
-                <p class="text-xs text-gray-500 mt-1">Default dari Best K silhouette.</p>
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Init Method</label>
-                <select name="init_method" class="w-full border rounded-xl p-3 text-sm">
-                    <option value="k-means++" selected>k-means++</option>
-                    <option value="manual">manual (baris centroid)</option>
-                </select>
-                <p class="text-xs text-gray-500 mt-1">Manual mengikuti Colab (baris 307,142,235).</p>
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Init Rows (Excel, 1-based)</label>
-                <input type="text" name="init_rows" placeholder="307,142,235"
-                       class="w-full border rounded-xl p-3 text-sm" />
-                <p class="text-xs text-gray-500 mt-1">Isi hanya jika init = manual.</p>
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">Random State</label>
-                <input type="number" name="random_state" value="42"
-                       class="w-full border rounded-xl p-3 text-sm" />
-            </div>
-
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">n_init</label>
-                <input type="number" name="n_init" placeholder="(opsional)"
-                       class="w-full border rounded-xl p-3 text-sm" />
-                <p class="text-xs text-gray-500 mt-1">Auto: 10 (k-means++), 1 (manual).</p>
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">max_iter</label>
-                <input type="number" name="max_iter" value="300"
-                       class="w-full border rounded-xl p-3 text-sm" />
-            </div>
-
-            <div class="flex items-end">
-                <button type="submit"
-                        class="w-full px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition">
-                    Jalankan KMeans
-                </button>
+            <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                            <th class="px-3 py-2 font-semibold">K</th>
+                            <th class="px-3 py-2 font-semibold">Silhouette Score</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        {% for item in last_silhouette_for_pca.scores_by_k %}
+                        <tr>
+                            <td class="px-3 py-2">{{ item.k }}</td>
+                            <td class="px-3 py-2">{{ "%.6f"|format(item.score) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
-    </form>
+        {% endif %}
+    </section>
 
-    {% if last_kmeans_for_pca %}
-    <div class="mt-6 p-4 bg-gray-50 rounded-xl">
-        <div class="text-sm text-gray-800">
-            <b>KMeans terakhir (PCA Run #{{ last_pca.id }}):</b>
-            K={{ last_kmeans_for_pca.k }} • init={{ last_kmeans_for_pca.init_method }}
-            {% if last_kmeans_for_pca.n_iter %}
-                • n_iter={{ last_kmeans_for_pca.n_iter }}
+    <section class="{{ card_cls }}">
+        <div class="mb-4 flex items-center justify-between gap-3">
+            <h2 class="text-lg font-semibold text-slate-900">2) KMeans Clustering</h2>
+        </div>
+
+        <form method="POST" action="{{ url_for('clustering.index', dataset_id=selected_dataset_id) }}" class="space-y-4">
+            <input type="hidden" name="action" value="kmeans" />
+            <input type="hidden" name="dataset_id" value="{{ selected_dataset_id }}" />
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <div>
+                    <label class="{{ label_cls }}">Komponen PCA dipakai</label>
+                    <input type="number" name="components_count"
+                           value="{% if last_pca.selected_components %}{{ last_pca.selected_components|length }}{% else %}4{% endif %}"
+                           min="1"
+                           class="{{ input_cls }}" />
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Jumlah Cluster (K)</label>
+                    <input type="number" name="k"
+                           value="{% if last_silhouette_for_pca %}{{ last_silhouette_for_pca.best_k }}{% else %}3{% endif %}"
+                           min="2"
+                           class="{{ input_cls }}" />
+                    <p class="mt-2 text-xs text-slate-500">Default dari Best K silhouette.</p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Init Method</label>
+                    <select name="init_method" class="{{ input_cls }}">
+                        <option value="k-means++" selected>k-means++</option>
+                        <option value="manual">manual (baris centroid)</option>
+                    </select>
+                    <p class="mt-2 text-xs text-slate-500">Manual mengikuti Colab (baris 307,142,235).</p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Init Rows (Excel, 1-based)</label>
+                    <input type="text" name="init_rows" placeholder="307,142,235" class="{{ input_cls }}" />
+                    <p class="mt-2 text-xs text-slate-500">Isi hanya jika init = manual.</p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">Random State</label>
+                    <input type="number" name="random_state" value="42" class="{{ input_cls }}" />
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                    <label class="{{ label_cls }}">n_init</label>
+                    <input type="number" name="n_init" placeholder="(opsional)" class="{{ input_cls }}" />
+                    <p class="mt-2 text-xs text-slate-500">Auto: 10 (k-means++), 1 (manual).</p>
+                </div>
+
+                <div>
+                    <label class="{{ label_cls }}">max_iter</label>
+                    <input type="number" name="max_iter" value="300" class="{{ input_cls }}" />
+                </div>
+
+                <div class="flex items-end">
+                    <button type="submit"
+                            class="inline-flex w-full items-center justify-center rounded-xl bg-cyan-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-cyan-500">
+                        Jalankan KMeans
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        {% if last_kmeans_for_pca %}
+        <div class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div class="text-sm text-slate-800">
+                <span class="font-semibold text-slate-900">KMeans terakhir (PCA Run #{{ last_pca.id }}):</span>
+                K={{ last_kmeans_for_pca.k }} &middot; init={{ last_kmeans_for_pca.init_method }}
+                {% if last_kmeans_for_pca.n_iter %}
+                    &middot; n_iter={{ last_kmeans_for_pca.n_iter }}
+                {% endif %}
+            </div>
+
+            {% if last_kmeans_for_pca.counts_by_cluster %}
+            <div class="mt-3 text-sm text-slate-700">
+                <span class="font-semibold text-slate-900">Jumlah anggota per cluster:</span>
+                {% for key, val in last_kmeans_for_pca.counts_by_cluster.items() %}
+                    <span class="mr-3 inline-block">{{ key }}: {{ val }}</span>
+                {% endfor %}
+            </div>
             {% endif %}
+
+            <div class="mt-4">
+                <a class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700"
+                   href="{{ url_for('clustering.download', run_id=last_kmeans_for_pca.id) }}">
+                    Download Output Clustering (Excel)
+                </a>
+            </div>
         </div>
 
-        {% if last_kmeans_for_pca.counts_by_cluster %}
-        <div class="mt-3 text-sm text-gray-700">
-            <b>Jumlah anggota per cluster:</b>
-            {% for key, val in last_kmeans_for_pca.counts_by_cluster.items() %}
-                <span class="inline-block mr-3">{{ key }}: {{ val }}</span>
-            {% endfor %}
+        {% if last_kmeans_for_pca.iterations_log %}
+        <div class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+            <div class="mb-2 text-sm font-semibold text-slate-900">Proses Iterasi (KMeans)</div>
+
+            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                            <th class="px-3 py-2 font-semibold">Iter</th>
+                            <th class="px-3 py-2 font-semibold">Inertia</th>
+                            <th class="px-3 py-2 font-semibold">Max Shift</th>
+                            <th class="px-3 py-2 font-semibold">Counts</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        {% for it in last_kmeans_for_pca.iterations_log %}
+                        <tr>
+                            <td class="px-3 py-2">{{ it.iter }}</td>
+                            <td class="px-3 py-2">{{ "%.6f"|format(it.inertia) }}</td>
+                            <td class="px-3 py-2">{{ "%.6f"|format(it.max_centroid_shift) }}</td>
+                            <td class="px-3 py-2">
+                                {% for ck, cv in it.counts_by_cluster.items() %}
+                                    <span class="mr-3 inline-block">{{ ck }}={{ cv }}</span>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">Inertia semakin kecil umumnya semakin baik. Max Shift mendekati 0 artinya centroid sudah konvergen.</p>
         </div>
         {% endif %}
 
-        <div class="mt-4">
-            <a class="inline-block px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition"
-               href="{{ url_for('clustering.download', run_id=last_kmeans_for_pca.id) }}">
-                Download Output Clustering (Excel)
-            </a>
-        </div>
-    </div>
-
-    <!-- ================= ITERASI TABLE (NEW) ================= -->
-    {% if last_kmeans_for_pca.iterations_log %}
-    <div class="mt-6 p-4 bg-white rounded-xl border border-gray-100">
-        <div class="text-sm font-semibold mb-2">
-            Proses Iterasi (KMeans)
+        {% if pca_points and last_kmeans_for_pca.labels_by_iteration and last_kmeans_for_pca.centroids_by_iteration %}
+        <div class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+            <div class="mb-2 text-sm font-semibold text-slate-900">Visualisasi Iterasi (PCA1 vs PCA2)</div>
+            <div id="kmeans-plot" class="h-[520px] w-full rounded-lg border border-slate-200"></div>
+            <p class="mt-2 text-xs text-slate-500">Gunakan slider untuk melihat perpindahan centroid dan perubahan cluster per iterasi.</p>
         </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm border-collapse">
-                <thead>
-                    <tr class="bg-gray-50 text-left text-gray-600">
-                        <th class="px-3 py-2">Iter</th>
-                        <th class="px-3 py-2">Inertia</th>
-                        <th class="px-3 py-2">Max Shift</th>
-                        <th class="px-3 py-2">Counts</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for it in last_kmeans_for_pca.iterations_log %}
-                    <tr class="border-t">
-                        <td class="px-3 py-2">{{ it.iter }}</td>
-                        <td class="px-3 py-2">{{ "%.6f"|format(it.inertia) }}</td>
-                        <td class="px-3 py-2">{{ "%.6f"|format(it.max_centroid_shift) }}</td>
-                        <td class="px-3 py-2">
-                            {% for ck, cv in it.counts_by_cluster.items() %}
-                                <span class="inline-block mr-3">{{ ck }}={{ cv }}</span>
-                            {% endfor %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <p class="text-xs text-gray-500 mt-2">
-            Inertia semakin kecil umumnya semakin baik. Max Shift mendekati 0 artinya centroid sudah konvergen.
-        </p>
-    </div>
-    {% endif %}
+        <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+        <script>
+          const points = {{ pca_points|tojson }};
+          const labelsByIter = {{ last_kmeans_for_pca.labels_by_iteration|tojson }};
+          const centroidsByIter = {{ last_kmeans_for_pca.centroids_by_iteration|tojson }};
 
-    <!-- ================= VISUALISASI ITERASI (NEW) ================= -->
-    {% if pca_points and last_kmeans_for_pca.labels_by_iteration and last_kmeans_for_pca.centroids_by_iteration %}
-    <div class="mt-6 p-4 bg-white rounded-xl border border-gray-100">
-        <div class="text-sm font-semibold mb-2">Visualisasi Iterasi (PCA1 vs PCA2)</div>
-        <div id="kmeans-plot" style="height: 520px;"></div>
-        <p class="text-xs text-gray-500 mt-2">
-            Gunakan slider untuk melihat perpindahan centroid dan perubahan cluster per iterasi.
-        </p>
-    </div>
+          const pca1 = points.map(r => r.PCA1);
+          const pca2 = points.map(r => r.PCA2);
 
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-    <script>
-      const points = {{ pca_points|tojson }};
-      const labelsByIter = {{ last_kmeans_for_pca.labels_by_iteration|tojson }};
-      const centroidsByIter = {{ last_kmeans_for_pca.centroids_by_iteration|tojson }};
+          const clusters = Array.from(new Set(labelsByIter[0])).sort();
 
-      const pca1 = points.map(r => r.PCA1);
-      const pca2 = points.map(r => r.PCA2);
+          function makeTraces(iterIdx){
+            const labels = labelsByIter[iterIdx];
+            const traces = [];
 
-      const clusters = Array.from(new Set(labelsByIter[0])).sort();
+            clusters.forEach(c => {
+              const xs = [], ys = [];
+              for(let i=0;i<labels.length;i++){
+                if(labels[i] === c){
+                  xs.push(pca1[i]);
+                  ys.push(pca2[i]);
+                }
+              }
+              traces.push({
+                type: "scatter",
+                mode: "markers",
+                name: c,
+                x: xs,
+                y: ys,
+                marker: { size: 8 }
+              });
+            });
 
-      function makeTraces(iterIdx){
-        const labels = labelsByIter[iterIdx];
-        const traces = [];
+            const cent = centroidsByIter[iterIdx].map(row => [row[0], row[1]]);
+            traces.push({
+              type: "scatter",
+              mode: "markers",
+              name: "Centroid",
+              x: cent.map(v => v[0]),
+              y: cent.map(v => v[1]),
+              marker: { symbol: "x", size: 12 }
+            });
 
-        clusters.forEach(c => {
-          const xs = [], ys = [];
-          for(let i=0;i<labels.length;i++){
-            if(labels[i] === c){
-              xs.push(pca1[i]);
-              ys.push(pca2[i]);
-            }
+            return traces;
           }
-          traces.push({
-            type: "scatter",
-            mode: "markers",
-            name: c,
-            x: xs,
-            y: ys
+
+          const frames = labelsByIter.map((_, idx) => ({
+            name: String(idx+1),
+            data: makeTraces(idx)
+          }));
+
+          const layout = {
+            margin: {t: 30, r: 12, b: 45, l: 52},
+            xaxis: {title: "PCA1"},
+            yaxis: {title: "PCA2"},
+            paper_bgcolor: "#ffffff",
+            plot_bgcolor: "#ffffff",
+            updatemenus: [{
+              type: "buttons",
+              buttons: [
+                {label: "Play", method: "animate", args: [null, {fromcurrent: true, frame: {duration: 450, redraw: true}}]},
+                {label: "Pause", method: "animate", args: [[null], {mode: "immediate", frame: {duration: 0, redraw: false}}]}
+              ]
+            }],
+            sliders: [{
+              steps: frames.map(f => ({
+                label: "Iter " + f.name,
+                method: "animate",
+                args: [[f.name], {mode: "immediate", frame: {duration: 0, redraw: true}}]
+              })),
+              currentvalue: {prefix: "Iterasi: "}
+            }]
+          };
+
+          Plotly.newPlot("kmeans-plot", makeTraces(0), layout).then(() => {
+            Plotly.addFrames("kmeans-plot", frames);
           });
-        });
-
-        // centroid marker (ambil dim 0,1)
-        const cent = centroidsByIter[iterIdx].map(row => [row[0], row[1]]);
-        traces.push({
-          type: "scatter",
-          mode: "markers",
-          name: "Centroid",
-          x: cent.map(v => v[0]),
-          y: cent.map(v => v[1]),
-          marker: { symbol: "x", size: 12 }
-        });
-
-        return traces;
-      }
-
-      const frames = labelsByIter.map((_, idx) => ({
-        name: String(idx+1),
-        data: makeTraces(idx)
-      }));
-
-      const layout = {
-        margin: {t: 30, r: 10, b: 40, l: 50},
-        xaxis: {title: "PCA1"},
-        yaxis: {title: "PCA2"},
-        updatemenus: [{
-          type: "buttons",
-          buttons: [
-            {label: "Play", method: "animate", args: [null, {fromcurrent: true, frame: {duration: 450, redraw: true}}]},
-            {label: "Pause", method: "animate", args: [[null], {mode: "immediate", frame: {duration: 0, redraw: false}}]}
-          ]
-        }],
-        sliders: [{
-          steps: frames.map(f => ({
-            label: "Iter " + f.name,
-            method: "animate",
-            args: [[f.name], {mode: "immediate", frame: {duration: 0, redraw: true}}]
-          })),
-          currentvalue: {prefix: "Iterasi: "}
-        }]
-      };
-
-      Plotly.newPlot("kmeans-plot", makeTraces(0), layout).then(() => {
-        Plotly.addFrames("kmeans-plot", frames);
-      });
-    </script>
+        </script>
+        {% endif %}
+        {% endif %}
+    </section>
     {% endif %}
 
-    {% endif %}
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div class="{{ card_cls }}">
+            <h2 class="mb-4 text-lg font-semibold text-slate-900">Riwayat Silhouette Terbaru</h2>
+            <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                            <th class="px-3 py-2 font-semibold">Run</th>
+                            <th class="px-3 py-2 font-semibold">PCA Run</th>
+                            <th class="px-3 py-2 font-semibold">K Range</th>
+                            <th class="px-3 py-2 font-semibold">Best K</th>
+                            <th class="px-3 py-2 font-semibold">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        {% for r in silhouette_runs %}
+                        <tr>
+                            <td class="px-3 py-2">#{{ r.id }}</td>
+                            <td class="px-3 py-2">#{{ r.pca_run_id }}</td>
+                            <td class="px-3 py-2">{{ r.k_min }}-{{ r.k_max }}</td>
+                            <td class="px-3 py-2">{{ r.best_k }}</td>
+                            <td class="px-3 py-2">
+                                {% if r.status == 'success' %}
+                                    <span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">success</span>
+                                {% else %}
+                                    <span class="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">failed</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="{{ card_cls }}">
+            <h2 class="mb-4 text-lg font-semibold text-slate-900">Riwayat KMeans Terbaru</h2>
+            <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                            <th class="px-3 py-2 font-semibold">Run</th>
+                            <th class="px-3 py-2 font-semibold">PCA Run</th>
+                            <th class="px-3 py-2 font-semibold">K</th>
+                            <th class="px-3 py-2 font-semibold">Init</th>
+                            <th class="px-3 py-2 font-semibold">Status</th>
+                            <th class="px-3 py-2 font-semibold">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        {% for r in kmeans_runs %}
+                        <tr>
+                            <td class="px-3 py-2">#{{ r.id }}</td>
+                            <td class="px-3 py-2">#{{ r.pca_run_id }}</td>
+                            <td class="px-3 py-2">{{ r.k }}</td>
+                            <td class="px-3 py-2">{{ r.init_method }}</td>
+                            <td class="px-3 py-2">
+                                {% if r.status == 'success' %}
+                                    <span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">success</span>
+                                {% else %}
+                                    <span class="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">failed</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-2">
+                                {% if r.status == 'success' and r.output_path %}
+                                    <a class="font-medium text-cyan-700 transition hover:text-cyan-600 hover:underline"
+                                       href="{{ url_for('clustering.download', run_id=r.id) }}">Download</a>
+                                {% else %}
+                                    <span class="text-slate-400">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
 
 </div>
-
-{% endif %}
-
-<!-- ================= RIWAYAT ================= -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">Riwayat Silhouette Terbaru</h2>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm border-collapse">
-                <thead>
-                    <tr class="bg-gray-50 text-left text-gray-600">
-                        <th class="px-3 py-2">Run</th>
-                        <th class="px-3 py-2">PCA Run</th>
-                        <th class="px-3 py-2">K Range</th>
-                        <th class="px-3 py-2">Best K</th>
-                        <th class="px-3 py-2">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in silhouette_runs %}
-                    <tr class="border-t">
-                        <td class="px-3 py-2">#{{ r.id }}</td>
-                        <td class="px-3 py-2">#{{ r.pca_run_id }}</td>
-                        <td class="px-3 py-2">{{ r.k_min }}-{{ r.k_max }}</td>
-                        <td class="px-3 py-2">{{ r.best_k }}</td>
-                        <td class="px-3 py-2">
-                            {% if r.status == 'success' %}
-                                <span class="text-green-700 font-medium">success</span>
-                            {% else %}
-                                <span class="text-red-700 font-medium">failed</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">Riwayat KMeans Terbaru</h2>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm border-collapse">
-                <thead>
-                    <tr class="bg-gray-50 text-left text-gray-600">
-                        <th class="px-3 py-2">Run</th>
-                        <th class="px-3 py-2">PCA Run</th>
-                        <th class="px-3 py-2">K</th>
-                        <th class="px-3 py-2">Init</th>
-                        <th class="px-3 py-2">Status</th>
-                        <th class="px-3 py-2">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in kmeans_runs %}
-                    <tr class="border-t">
-                        <td class="px-3 py-2">#{{ r.id }}</td>
-                        <td class="px-3 py-2">#{{ r.pca_run_id }}</td>
-                        <td class="px-3 py-2">{{ r.k }}</td>
-                        <td class="px-3 py-2">{{ r.init_method }}</td>
-                        <td class="px-3 py-2">
-                            {% if r.status == 'success' %}
-                                <span class="text-green-700 font-medium">success</span>
-                            {% else %}
-                                <span class="text-red-700 font-medium">failed</span>
-                            {% endif %}
-                        </td>
-                        <td class="px-3 py-2">
-                            {% if r.status == 'success' and r.output_path %}
-                                <a class="text-blue-600 hover:underline"
-                                   href="{{ url_for('clustering.download', run_id=r.id) }}">Download</a>
-                            {% else %}
-                                <span class="text-gray-400">-</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-</div>
-
 {% endblock %}
