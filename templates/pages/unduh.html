@@ -1,13 +1,292 @@
-{% extends "layouts.html" %}
-
+﻿{% extends "layouts.html" %}
 {% block title %}Unduh Laporan{% endblock %}
+{% block page_title %}Unduh Laporan{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto">
-    <h1 class="text-3xl font-bold text-gray-900 mb-6">Unduh Laporan</h1>
+{% set card_cls = "rounded-2xl border border-slate-200 bg-white shadow-sm p-6" %}
+{% set input_cls = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100" %}
 
-    <div class="bg-white rounded-lg shadow p-6">
-        <p class="text-gray-600">Halaman untuk mengunduh laporan akan diimplementasikan di sini.</p>
-    </div>
+<div class="space-y-6">
+
+    <section class="{{ card_cls }} bg-gradient-to-br from-slate-50 via-white to-cyan-50">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-end">
+            <div>
+                <h2 class="text-xl font-semibold text-slate-900">Pusat Unduh Output Pipeline</h2>
+                <p class="mt-1 text-sm text-slate-600">Menampilkan file yang tersedia untuk diunduh berdasarkan dataset dan proses pipeline terbaru.</p>
+            </div>
+            <div>
+                <label class="mb-1.5 block text-sm font-medium text-slate-600">Dataset</label>
+                <select name="dataset_id" class="{{ input_cls }}"
+                        onchange="window.location='{{ url_for('unduh') }}?dataset_id=' + this.value;">
+                    <option value="">-- Pilih Dataset --</option>
+                    {% for d in datasets %}
+                    <option value="{{ d.id }}" {% if selected_dataset_id == d.id %}selected{% endif %}>{{ d.filename }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        {% if selected_dataset %}
+        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div class="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-cyan-700">Dataset Aktif</p>
+                <p class="mt-1 truncate text-sm font-medium text-cyan-900">{{ selected_dataset.filename }}</p>
+            </div>
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">File Siap Diunduh</p>
+                <p class="mt-1 text-2xl font-semibold text-emerald-900">{{ ready_count }}</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Opsi Download</p>
+                <p class="mt-1 text-2xl font-semibold text-slate-900">{{ download_items|length }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
+    {% if selected_dataset %}
+        {% if download_items %}
+        <section class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {% for item in download_items %}
+            <article class="{{ card_cls }} p-5">
+                <div class="flex items-start justify-between gap-3">
+                    <h3 class="text-lg font-semibold text-slate-900">{{ item.title }}</h3>
+                    {% if item.ready %}
+                    <span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Ready</span>
+                    {% else %}
+                    <span class="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">Not Ready</span>
+                    {% endif %}
+                </div>
+
+                <p class="mt-2 text-sm text-slate-600">{{ item.description }}</p>
+
+                <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
+                    <div><span class="font-medium">File:</span> {{ item.filename }}</div>
+                    <div><span class="font-medium">Ukuran:</span> {{ item.size_text }}</div>
+                    <div><span class="font-medium">Terakhir update:</span> {{ item.modified_text }}</div>
+                    {% if item.kind == 'chart_zip' %}
+                    <div><span class="font-medium">Chart siap ekspor:</span> {{ item.chart_count }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="mt-4">
+                    {% if item.ready %}
+                        {% if item.kind == 'chart_zip' %}
+                        <button type="button" id="download-chart-zip-btn"
+                                class="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700">
+                            Download PNG ZIP
+                        </button>
+                        {% else %}
+                        <a href="{{ item.url }}"
+                           class="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700">
+                            Download
+                        </a>
+                        {% endif %}
+                    {% else %}
+                    <button type="button" disabled
+                            class="inline-flex w-full cursor-not-allowed items-center justify-center rounded-xl bg-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500">
+                        Belum Tersedia
+                    </button>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if ready_count == 0 %}
+        <section class="{{ card_cls }}">
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                Belum ada file yang siap diunduh untuk dataset ini. Jalankan pipeline mulai dari preprocessing, PCA, clustering, lalu RF evaluasi.
+            </div>
+        </section>
+        {% endif %}
+    {% else %}
+    <section class="{{ card_cls }}">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Pilih dataset terlebih dahulu untuk melihat opsi file yang bisa diunduh.</div>
+    </section>
+    {% endif %}
+
 </div>
+
+{% if selected_dataset %}
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+const chartExportData = {{ chart_export_data|tojson }};
+
+async function exportChartsAsZip() {
+    const btn = document.getElementById("download-chart-zip-btn");
+    if (!btn) return;
+    if (!window.Plotly || !window.JSZip) {
+        alert("Library ekspor chart belum siap.");
+        return;
+    }
+
+    const specs = [];
+    if (chartExportData.usage_distribution && chartExportData.usage_distribution.length) {
+        specs.push({
+            file: "01_water_usage_distribution.png",
+            data: [{
+                type: "bar",
+                x: chartExportData.usage_distribution.map(d => d.range),
+                y: chartExportData.usage_distribution.map(d => d.count),
+                marker: { color: "#0ea5e9" }
+            }],
+            layout: {
+                title: "Water Usage Distribution",
+                xaxis: { title: "Consumption Range" },
+                yaxis: { title: "Customer Count" },
+                margin: { t: 60, r: 20, b: 60, l: 60 }
+            }
+        });
+    }
+
+    if (chartExportData.region_distribution && chartExportData.region_distribution.length) {
+        specs.push({
+            file: "02_customer_distribution_by_region.png",
+            data: [{
+                type: "bar",
+                x: chartExportData.region_distribution.map(d => d.region),
+                y: chartExportData.region_distribution.map(d => d.count),
+                marker: { color: "#14b8a6" }
+            }],
+            layout: {
+                title: "Customer Distribution by Region",
+                xaxis: { title: "Region" },
+                yaxis: { title: "Customer Count" },
+                margin: { t: 60, r: 20, b: 60, l: 60 }
+            }
+        });
+    }
+
+    if (chartExportData.cluster_comparison && chartExportData.cluster_comparison.length) {
+        const keys = Object.keys(chartExportData.cluster_comparison[0]).filter(k => k !== "cluster");
+        specs.push({
+            file: "03_cluster_comparison.png",
+            data: keys.map(k => ({
+                type: "bar",
+                name: k,
+                x: chartExportData.cluster_comparison.map(d => d.cluster),
+                y: chartExportData.cluster_comparison.map(d => d[k]),
+            })),
+            layout: {
+                title: "Cluster Comparison",
+                barmode: "group",
+                xaxis: { title: "Cluster" },
+                yaxis: { title: "Average Value" },
+                margin: { t: 60, r: 20, b: 60, l: 60 }
+            }
+        });
+    }
+
+    if (chartExportData.monthly_trend && chartExportData.monthly_trend.length) {
+        specs.push({
+            file: "04_monthly_usage_revenue_trend.png",
+            data: [
+                {
+                    type: "scatter",
+                    mode: "lines+markers",
+                    name: "Usage",
+                    x: chartExportData.monthly_trend.map(d => d.month),
+                    y: chartExportData.monthly_trend.map(d => d.usage),
+                    line: { color: "#0ea5e9" }
+                },
+                {
+                    type: "scatter",
+                    mode: "lines+markers",
+                    name: "Revenue",
+                    x: chartExportData.monthly_trend.map(d => d.month),
+                    y: chartExportData.monthly_trend.map(d => d.revenue),
+                    yaxis: "y2",
+                    line: { color: "#22c55e" }
+                }
+            ],
+            layout: {
+                title: "Monthly Usage & Revenue Trend",
+                xaxis: { title: "Month" },
+                yaxis: { title: "Usage" },
+                yaxis2: { title: "Revenue", overlaying: "y", side: "right" },
+                margin: { t: 60, r: 60, b: 60, l: 60 }
+            }
+        });
+    }
+
+    if (chartExportData.scatter_cluster && chartExportData.scatter_cluster.length) {
+        const clusters = [...new Set(chartExportData.scatter_cluster.map(d => d.cluster))].sort();
+        specs.push({
+            file: "05_multidimensional_cluster_analysis.png",
+            data: clusters.map(c => {
+                const rows = chartExportData.scatter_cluster.filter(d => d.cluster === c);
+                return {
+                    type: "scatter",
+                    mode: "markers",
+                    name: c,
+                    x: rows.map(d => d.usage),
+                    y: rows.map(d => d.revenue),
+                    marker: { size: 8 }
+                };
+            }),
+            layout: {
+                title: "Multi-Dimensional Cluster Analysis",
+                xaxis: { title: "Usage" },
+                yaxis: { title: "Bill Amount" },
+                margin: { t: 60, r: 20, b: 60, l: 70 }
+            }
+        });
+    }
+
+    if (!specs.length) {
+        alert("Tidak ada chart yang bisa diekspor.");
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Menyiapkan ZIP...";
+
+    const zip = new JSZip();
+    const stage = document.createElement("div");
+    stage.style.position = "fixed";
+    stage.style.left = "-99999px";
+    stage.style.top = "0";
+    stage.style.width = "1280px";
+    stage.style.height = "800px";
+    document.body.appendChild(stage);
+
+    try {
+        for (const spec of specs) {
+            stage.innerHTML = "";
+            const plotDiv = document.createElement("div");
+            plotDiv.style.width = "1280px";
+            plotDiv.style.height = "800px";
+            stage.appendChild(plotDiv);
+
+            await Plotly.newPlot(plotDiv, spec.data, spec.layout, { displayModeBar: false, responsive: false });
+            const dataUrl = await Plotly.toImage(plotDiv, { format: "png", width: 1280, height: 800, scale: 2 });
+            const base64 = dataUrl.split(",")[1];
+            zip.file(spec.file, base64, { base64: true });
+            Plotly.purge(plotDiv);
+        }
+
+        const blob = await zip.generateAsync({ type: "blob" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "visualization_charts_png.zip";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    } catch (err) {
+        alert("Gagal mengekspor chart ke ZIP: " + (err?.message || err));
+    } finally {
+        stage.remove();
+        btn.disabled = false;
+        btn.textContent = "Download PNG ZIP";
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("download-chart-zip-btn");
+    if (btn) btn.addEventListener("click", exportChartsAsZip);
+});
+</script>
+{% endif %}
 {% endblock %}

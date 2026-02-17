@@ -3,7 +3,7 @@
 # Sistem Clustering & Prediksi PDAM
 # ==========================================
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, url_for
 import os 
 import re
 import pandas as pd
@@ -15,6 +15,7 @@ from models.pipeline_models import (
     PCARun,
     SilhouetteRun,
     KMeansRun,
+    DataSplit,
     RFEvaluation,
 )
 from controllers.upload_controller import upload_bp
@@ -134,6 +135,169 @@ def _build_confusion_matrix(eval_obj):
     }
 
 
+def _find_col(df, candidates):
+    """Cari nama kolom yang cocok (case-insensitive, trim)."""
+    if df is None or df.empty:
+        return None
+    normalized = {str(c).strip().lower(): c for c in df.columns}
+    for cand in candidates:
+        key = cand.strip().lower()
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def _file_meta(path):
+    """Ambil metadata file untuk tampilan unduh."""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        stat = os.stat(path)
+        size_bytes = stat.st_size
+        if size_bytes < 1024:
+            size_text = f"{size_bytes} B"
+        elif size_bytes < (1024 * 1024):
+            size_text = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_text = f"{size_bytes / (1024 * 1024):.2f} MB"
+        modified_text = pd.to_datetime(stat.st_mtime, unit="s").strftime("%d %b %Y %H:%M")
+        return {
+            "filename": os.path.basename(path),
+            "size_text": size_text,
+            "modified_text": modified_text,
+        }
+    except Exception:
+        return None
+
+
+def _get_chart_export_data(dataset_id):
+    """
+    Ambil data mentah chart untuk ekspor PNG ZIP di halaman unduh.
+    Mengembalikan dict berisi dataset chart yang tersedia.
+    """
+    payload = {
+        "usage_distribution": None,
+        "region_distribution": None,
+        "cluster_comparison": None,
+        "monthly_trend": None,
+        "scatter_cluster": None,
+        "available_chart_count": 0,
+    }
+
+    if not dataset_id:
+        return payload
+
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset or not dataset.filepath or not os.path.exists(dataset.filepath):
+        return payload
+
+    try:
+        df_raw = pd.read_excel(dataset.filepath)
+    except Exception:
+        return payload
+
+    if df_raw is None or df_raw.empty:
+        return payload
+
+    usage_col = _find_col(df_raw, ["pemakaian", "pemakaian air", "usage", "water usage"])
+    region_col = _find_col(df_raw, ["wilayah", "region", "area"])
+    revenue_col = _find_col(df_raw, ["jumlah tagihan (rp.)", "jumlah tagihan", "bill amount", "revenue"])
+    tenure_col = _find_col(df_raw, ["lama berlangganan", "tenure", "subscription duration"])
+    month_col = _find_col(df_raw, ["bulan", "month", "periode", "period", "tanggal", "date"])
+
+    if usage_col:
+        usage_series = pd.to_numeric(df_raw[usage_col], errors="coerce").dropna()
+        if not usage_series.empty:
+            bins = [-float("inf"), 10, 20, 30, 50, float("inf")]
+            labels = ["<=10", "11-20", "21-30", "31-50", ">50"]
+            dist = pd.cut(usage_series, bins=bins, labels=labels).value_counts(sort=False)
+            payload["usage_distribution"] = [{"range": str(idx), "count": int(val)} for idx, val in dist.items()]
+
+    if region_col:
+        region_counts = df_raw[region_col].astype(str).str.strip().value_counts().sort_index()
+        if len(region_counts):
+            payload["region_distribution"] = [{"region": str(idx), "count": int(val)} for idx, val in region_counts.items()]
+
+    if month_col and (usage_col or revenue_col):
+        dt = pd.to_datetime(df_raw[month_col], errors="coerce")
+        df_m = df_raw.copy()
+        df_m["_month"] = dt.dt.to_period("M").astype(str)
+        df_m = df_m[df_m["_month"].notna()]
+        if not df_m.empty:
+            agg = df_m.groupby("_month", as_index=False).agg(
+                usage=(usage_col, lambda s: pd.to_numeric(s, errors="coerce").fillna(0).sum()) if usage_col else ("_month", "size"),
+                revenue=(revenue_col, lambda s: pd.to_numeric(s, errors="coerce").fillna(0).sum()) if revenue_col else ("_month", "size"),
+            )
+            agg = agg.sort_values("_month").tail(12)
+            payload["monthly_trend"] = [
+                {"month": r["_month"], "usage": float(r["usage"]) if usage_col else None, "revenue": float(r["revenue"]) if revenue_col else None}
+                for _, r in agg.iterrows()
+            ]
+
+    preprocess_run = (
+        PreprocessRun.query
+        .filter_by(dataset_id=dataset_id, status="success")
+        .order_by(PreprocessRun.created_at.desc())
+        .first()
+    )
+    latest_kmeans = None
+    if preprocess_run:
+        pca_run = (
+            PCARun.query
+            .filter_by(preprocess_run_id=preprocess_run.id, status="success")
+            .order_by(PCARun.created_at.desc())
+            .first()
+        )
+        if pca_run:
+            latest_kmeans = (
+                KMeansRun.query
+                .filter_by(pca_run_id=pca_run.id, status="success")
+                .order_by(KMeansRun.created_at.desc())
+                .first()
+            )
+
+    if latest_kmeans and latest_kmeans.output_path and os.path.exists(latest_kmeans.output_path):
+        try:
+            df_cluster = pd.read_excel(latest_kmeans.output_path, sheet_name="Data+Cluster")
+            if "Row" in df_cluster.columns and "Cluster" in df_cluster.columns:
+                df_join = df_raw.copy().reset_index(drop=True)
+                df_join["Row"] = df_join.index + 1
+                df_join = df_join.merge(df_cluster[["Row", "Cluster"]], on="Row", how="left")
+
+                metrics_map = []
+                if usage_col:
+                    metrics_map.append(("Pemakaian", usage_col))
+                if revenue_col:
+                    metrics_map.append(("Tagihan (Rp)", revenue_col))
+                if tenure_col:
+                    metrics_map.append(("Lama Berlangganan", tenure_col))
+
+                if metrics_map and "Cluster" in df_join.columns:
+                    rows = []
+                    for _, g in df_join.groupby("Cluster", as_index=False):
+                        c = str(g["Cluster"].iloc[0])
+                        item = {"cluster": c}
+                        for label, col in metrics_map:
+                            item[label] = float(pd.to_numeric(g[col], errors="coerce").fillna(0).mean())
+                        rows.append(item)
+                    payload["cluster_comparison"] = rows if rows else None
+
+                if usage_col and revenue_col and "Cluster" in df_join.columns:
+                    pts = df_join[[usage_col, revenue_col, "Cluster"]].copy()
+                    pts.columns = ["usage", "revenue", "cluster"]
+                    pts["usage"] = pd.to_numeric(pts["usage"], errors="coerce")
+                    pts["revenue"] = pd.to_numeric(pts["revenue"], errors="coerce")
+                    pts = pts.dropna(subset=["usage", "revenue", "cluster"])
+                    payload["scatter_cluster"] = pts.to_dict(orient="records") if not pts.empty else None
+        except Exception:
+            pass
+
+    payload["available_chart_count"] = len(
+        [k for k in ["usage_distribution", "region_distribution", "cluster_comparison", "monthly_trend", "scatter_cluster"] if payload.get(k)]
+    )
+    return payload
+
+
 # ==========================================
 # ROUTE: HALAMAN UTAMA
 # ==========================================
@@ -242,7 +406,232 @@ def evaluasi():
 # ==========================================
 @app.route("/visualisasi")
 def visualisasi():
-    return render_template("pages/visualisasi.html")
+    datasets = Dataset.query.order_by(Dataset.uploaded_at.desc()).all()
+    selected_dataset_id = request.args.get("dataset_id", type=int)
+
+    selected_dataset = None
+    usage_distribution = None
+    region_distribution = None
+    cluster_comparison = None
+    scatter_cluster = None
+    monthly_trend = None
+    monthly_trend_note = None
+    kpi = {
+        "total_water_consumption": None,
+        "total_revenue": None,
+        "payment_collection_rate": None,
+    }
+    visual_notes = []
+    usage_summary = None
+    region_summary = None
+    cluster_summary = None
+    monthly_summary = None
+    scatter_summary = None
+
+    if selected_dataset_id:
+        selected_dataset = Dataset.query.get(selected_dataset_id)
+
+        if selected_dataset and selected_dataset.filepath and os.path.exists(selected_dataset.filepath):
+            try:
+                df_raw = pd.read_excel(selected_dataset.filepath)
+            except Exception:
+                df_raw = None
+                visual_notes.append("Dataset tidak dapat dibaca untuk kebutuhan visualisasi.")
+
+            if df_raw is not None and not df_raw.empty:
+                usage_col = _find_col(df_raw, ["pemakaian", "pemakaian air", "usage", "water usage"])
+                region_col = _find_col(df_raw, ["wilayah", "region", "area"])
+                revenue_col = _find_col(df_raw, ["jumlah tagihan (rp.)", "jumlah tagihan", "bill amount", "revenue"])
+                slip_col = _find_col(df_raw, ["slip tagihan", "payment slip", "status pembayaran"])
+                tenure_col = _find_col(df_raw, ["lama berlangganan", "tenure", "subscription duration"])
+
+                if usage_col:
+                    usage_series = pd.to_numeric(df_raw[usage_col], errors="coerce").dropna()
+                    if not usage_series.empty:
+                        bins = [-float("inf"), 10, 20, 30, 50, float("inf")]
+                        labels = ["<=10", "11-20", "21-30", "31-50", ">50"]
+                        binned = pd.cut(usage_series, bins=bins, labels=labels)
+                        dist = binned.value_counts(sort=False)
+                        usage_distribution = [{"range": str(idx), "count": int(val)} for idx, val in dist.items()]
+                        kpi["total_water_consumption"] = float(usage_series.sum())
+                        top_range = dist.idxmax() if len(dist) else None
+                        top_count = int(dist.max()) if len(dist) else 0
+                        usage_summary = {
+                            "total_customers": int(len(usage_series)),
+                            "avg_usage": float(usage_series.mean()),
+                            "top_range": str(top_range) if top_range is not None else "-",
+                            "top_count": top_count,
+                        }
+
+                if region_col:
+                    region_series = df_raw[region_col].astype(str).str.strip()
+                    region_counts = region_series.value_counts().sort_index()
+                    region_distribution = [{"region": str(idx), "count": int(val)} for idx, val in region_counts.items()]
+                    if len(region_counts):
+                        top_region = str(region_counts.idxmax())
+                        top_region_count = int(region_counts.max())
+                        total_region_customers = int(region_counts.sum())
+                        top_region_pct = float((top_region_count / total_region_customers) * 100.0) if total_region_customers else 0.0
+                        region_summary = {
+                            "total_regions": int(region_counts.shape[0]),
+                            "top_region": top_region,
+                            "top_region_count": top_region_count,
+                            "top_region_pct": top_region_pct,
+                        }
+
+                if revenue_col:
+                    revenue_series = pd.to_numeric(df_raw[revenue_col], errors="coerce").fillna(0)
+                    kpi["total_revenue"] = float(revenue_series.sum())
+
+                if slip_col:
+                    slip_series = pd.to_numeric(df_raw[slip_col], errors="coerce")
+                    if revenue_col:
+                        revenue_series = pd.to_numeric(df_raw[revenue_col], errors="coerce").fillna(0)
+                        billable = revenue_series > 0
+                        if billable.sum() > 0:
+                            # Asumsi: slip tagihan = 0 dianggap tidak menunggak / collection baik.
+                            paid = (slip_series.fillna(0) == 0) & billable
+                            kpi["payment_collection_rate"] = float((paid.sum() / billable.sum()) * 100.0)
+
+                # Monthly trend hanya dibuat jika ada kolom periode/tanggal.
+                month_col = _find_col(df_raw, ["bulan", "month", "periode", "period", "tanggal", "date"])
+                if month_col and (usage_col or revenue_col):
+                    dt = pd.to_datetime(df_raw[month_col], errors="coerce")
+                    df_m = df_raw.copy()
+                    df_m["_month"] = dt.dt.to_period("M").astype(str)
+                    df_m = df_m[df_m["_month"].notna()]
+                    if not df_m.empty:
+                        agg = df_m.groupby("_month", as_index=False).agg(
+                            usage=(usage_col, lambda s: pd.to_numeric(s, errors="coerce").fillna(0).sum()) if usage_col else ("_month", "size"),
+                            revenue=(revenue_col, lambda s: pd.to_numeric(s, errors="coerce").fillna(0).sum()) if revenue_col else ("_month", "size"),
+                        )
+                        agg = agg.sort_values("_month").tail(12)
+                        monthly_trend = [
+                            {"month": r["_month"], "usage": float(r["usage"]) if usage_col else None, "revenue": float(r["revenue"]) if revenue_col else None}
+                            for _, r in agg.iterrows()
+                        ]
+                        if monthly_trend:
+                            first = monthly_trend[0]
+                            last = monthly_trend[-1]
+                            usage_change = None
+                            revenue_change = None
+                            if usage_col and first.get("usage") is not None and last.get("usage") is not None:
+                                usage_change = float(last["usage"] - first["usage"])
+                            if revenue_col and first.get("revenue") is not None and last.get("revenue") is not None:
+                                revenue_change = float(last["revenue"] - first["revenue"])
+                            monthly_summary = {
+                                "months_count": int(len(monthly_trend)),
+                                "first_month": first.get("month"),
+                                "last_month": last.get("month"),
+                                "usage_change": usage_change,
+                                "revenue_change": revenue_change,
+                            }
+                else:
+                    monthly_trend_note = "Trend bulanan belum dapat ditampilkan karena dataset belum memiliki kolom periode/tanggal."
+
+                # Ambil cluster terbaru untuk dataset terpilih lalu gabungkan dengan data mentah
+                preprocess_run = (
+                    PreprocessRun.query
+                    .filter_by(dataset_id=selected_dataset_id, status="success")
+                    .order_by(PreprocessRun.created_at.desc())
+                    .first()
+                )
+                latest_kmeans = None
+                if preprocess_run:
+                    pca_run = (
+                        PCARun.query
+                        .filter_by(preprocess_run_id=preprocess_run.id, status="success")
+                        .order_by(PCARun.created_at.desc())
+                        .first()
+                    )
+                    if pca_run:
+                        latest_kmeans = (
+                            KMeansRun.query
+                            .filter_by(pca_run_id=pca_run.id, status="success")
+                            .order_by(KMeansRun.created_at.desc())
+                            .first()
+                        )
+
+                if latest_kmeans and latest_kmeans.output_path and os.path.exists(latest_kmeans.output_path):
+                    try:
+                        df_cluster = pd.read_excel(latest_kmeans.output_path, sheet_name="Data+Cluster")
+                        if "Row" in df_cluster.columns and "Cluster" in df_cluster.columns:
+                            df_join = df_raw.copy().reset_index(drop=True)
+                            df_join["Row"] = df_join.index + 1
+                            df_join = df_join.merge(df_cluster[["Row", "Cluster"]], on="Row", how="left")
+
+                            metrics_map = []
+                            if usage_col:
+                                metrics_map.append(("Pemakaian", usage_col))
+                            if revenue_col:
+                                metrics_map.append(("Tagihan (Rp)", revenue_col))
+                            if tenure_col:
+                                metrics_map.append(("Lama Berlangganan", tenure_col))
+
+                            if metrics_map and "Cluster" in df_join.columns:
+                                group = df_join.groupby("Cluster", as_index=False)
+                                rows = []
+                                for _, g in group:
+                                    c = str(g["Cluster"].iloc[0])
+                                    item = {"cluster": c}
+                                    for label, col in metrics_map:
+                                        item[label] = float(pd.to_numeric(g[col], errors="coerce").fillna(0).mean())
+                                    rows.append(item)
+                                cluster_comparison = rows
+                                if rows:
+                                    # Prioritaskan indikator pemakaian bila ada.
+                                    usage_key = "Pemakaian" if any("Pemakaian" in k for k in rows[0].keys()) else None
+                                    if usage_key:
+                                        top_cluster = max(rows, key=lambda x: x.get(usage_key, 0))
+                                        cluster_summary = {
+                                            "cluster_count": int(len(rows)),
+                                            "top_cluster": str(top_cluster.get("cluster", "-")),
+                                            "top_cluster_usage": float(top_cluster.get(usage_key, 0)),
+                                        }
+                                    else:
+                                        cluster_summary = {
+                                            "cluster_count": int(len(rows)),
+                                            "top_cluster": None,
+                                            "top_cluster_usage": None,
+                                        }
+
+                            if usage_col and revenue_col and "Cluster" in df_join.columns:
+                                pts = df_join[[usage_col, revenue_col, "Cluster"]].copy()
+                                pts.columns = ["usage", "revenue", "cluster"]
+                                pts["usage"] = pd.to_numeric(pts["usage"], errors="coerce")
+                                pts["revenue"] = pd.to_numeric(pts["revenue"], errors="coerce")
+                                pts = pts.dropna(subset=["usage", "revenue", "cluster"])
+                                scatter_cluster = pts.to_dict(orient="records")
+                                if not pts.empty:
+                                    corr = pts["usage"].corr(pts["revenue"])
+                                    scatter_summary = {
+                                        "points_count": int(len(pts)),
+                                        "corr_usage_revenue": float(corr) if pd.notna(corr) else None,
+                                    }
+                    except Exception:
+                        visual_notes.append("Data cluster tidak dapat diproses untuk visualisasi lanjutan.")
+                else:
+                    visual_notes.append("Cluster comparison membutuhkan hasil KMeans terbaru untuk dataset terpilih.")
+
+    return render_template(
+        "pages/visualisasi.html",
+        datasets=datasets,
+        selected_dataset_id=selected_dataset_id,
+        selected_dataset=selected_dataset,
+        usage_distribution=usage_distribution,
+        region_distribution=region_distribution,
+        cluster_comparison=cluster_comparison,
+        monthly_trend=monthly_trend,
+        monthly_trend_note=monthly_trend_note,
+        scatter_cluster=scatter_cluster,
+        kpi=kpi,
+        visual_notes=visual_notes,
+        usage_summary=usage_summary,
+        region_summary=region_summary,
+        cluster_summary=cluster_summary,
+        monthly_summary=monthly_summary,
+        scatter_summary=scatter_summary,
+    )
 
 
 # ==========================================
@@ -250,7 +639,142 @@ def visualisasi():
 # ==========================================
 @app.route("/unduh")
 def unduh():
-    return render_template("pages/unduh.html")
+    datasets = Dataset.query.order_by(Dataset.uploaded_at.desc()).all()
+    selected_dataset_id = request.args.get("dataset_id", type=int)
+
+    selected_dataset = None
+    download_items = []
+    chart_export_data = _get_chart_export_data(selected_dataset_id)
+
+    if selected_dataset_id:
+        selected_dataset = Dataset.query.get(selected_dataset_id)
+
+        preprocess_run = (
+            PreprocessRun.query
+            .filter_by(dataset_id=selected_dataset_id, status="success")
+            .order_by(PreprocessRun.created_at.desc())
+            .first()
+        )
+
+        pca_run = None
+        if preprocess_run:
+            pca_run = (
+                PCARun.query
+                .filter_by(preprocess_run_id=preprocess_run.id, status="success")
+                .order_by(PCARun.created_at.desc())
+                .first()
+            )
+
+        kmeans_run = None
+        if pca_run:
+            kmeans_run = (
+                KMeansRun.query
+                .filter_by(pca_run_id=pca_run.id, status="success")
+                .order_by(KMeansRun.created_at.desc())
+                .first()
+            )
+
+        split_run = None
+        rf_eval_train = None
+        rf_eval_test = None
+        if kmeans_run:
+            split_run = (
+                DataSplit.query
+                .filter_by(kmeans_run_id=kmeans_run.id)
+                .order_by(DataSplit.created_at.desc())
+                .first()
+            )
+            rf_eval_train = (
+                RFEvaluation.query
+                .filter_by(kmeans_run_id=kmeans_run.id, split_type="train", status="success")
+                .order_by(RFEvaluation.created_at.desc())
+                .first()
+            )
+            rf_eval_test = (
+                RFEvaluation.query
+                .filter_by(kmeans_run_id=kmeans_run.id, split_type="test", status="success")
+                .order_by(RFEvaluation.created_at.desc())
+                .first()
+            )
+
+        def add_item(title, description, path, url=None):
+            meta = _file_meta(path) if path else None
+            download_items.append({
+                "title": title,
+                "description": description,
+                "ready": meta is not None and bool(url),
+                "url": url,
+                "filename": meta["filename"] if meta else "-",
+                "size_text": meta["size_text"] if meta else "-",
+                "modified_text": meta["modified_text"] if meta else "-",
+            })
+
+        add_item(
+            title="Standardized Dataset",
+            description="Output preprocessing (standardisasi) terbaru untuk dataset terpilih.",
+            path=preprocess_run.output_path if preprocess_run else None,
+            url=url_for("preprocessing.download", run_id=preprocess_run.id) if preprocess_run and preprocess_run.output_path else None,
+        )
+        add_item(
+            title="PCA Analysis Results",
+            description="Hasil analisis PCA terbaru beserta komponen yang digunakan.",
+            path=pca_run.output_path if pca_run else None,
+            url=url_for("pca.download", run_id=pca_run.id) if pca_run and pca_run.output_path else None,
+        )
+        add_item(
+            title="Clustering Results",
+            description="Hasil KMeans clustering terbaru (cluster assignment dan centroid).",
+            path=kmeans_run.output_path if kmeans_run else None,
+            url=url_for("clustering.download", run_id=kmeans_run.id) if kmeans_run and kmeans_run.output_path else None,
+        )
+        add_item(
+            title="RF Evaluation (Train)",
+            description="Laporan evaluasi Random Forest untuk data train.",
+            path=rf_eval_train.output_path if rf_eval_train else None,
+            url=url_for("rf.download_eval", eval_id=rf_eval_train.id) if rf_eval_train and rf_eval_train.output_path else None,
+        )
+        add_item(
+            title="RF Evaluation (Test)",
+            description="Laporan evaluasi Random Forest untuk data test.",
+            path=rf_eval_test.output_path if rf_eval_test else None,
+            url=url_for("rf.download_eval", eval_id=rf_eval_test.id) if rf_eval_test and rf_eval_test.output_path else None,
+        )
+        add_item(
+            title="RF Split Data (Train)",
+            description="File data train hasil proses split terbaru.",
+            path=split_run.train_path if split_run else None,
+            url=url_for("rf.download_split", split_id=split_run.id, which="train") if split_run and split_run.train_path else None,
+        )
+        add_item(
+            title="RF Split Data (Test)",
+            description="File data test hasil proses split terbaru.",
+            path=split_run.test_path if split_run else None,
+            url=url_for("rf.download_split", split_id=split_run.id, which="test") if split_run and split_run.test_path else None,
+        )
+
+        download_items.append({
+            "title": "Visualization Charts (PNG ZIP)",
+            "description": "Unduh semua chart visualisasi yang tersedia dalam 1 file ZIP berisi PNG.",
+            "ready": chart_export_data.get("available_chart_count", 0) > 0,
+            "url": None,
+            "filename": "visualization_charts_png.zip",
+            "size_text": "-",
+            "modified_text": "generated on demand",
+            "kind": "chart_zip",
+            "chart_count": chart_export_data.get("available_chart_count", 0),
+        })
+
+    ready_count = len([x for x in download_items if x["ready"]])
+
+    return render_template(
+        "pages/unduh.html",
+        datasets=datasets,
+        selected_dataset_id=selected_dataset_id,
+        selected_dataset=selected_dataset,
+        download_items=download_items,
+        ready_count=ready_count,
+        chart_export_data=chart_export_data,
+    )
 
 
 # ==========================================
