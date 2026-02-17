@@ -778,14 +778,6 @@ def unduh():
 
 
 # ==========================================
-# ROUTE: SETTINGS
-# ==========================================
-@app.route("/pengaturan")
-def pengaturan():
-    return render_template("pages/pengaturan.html")
-
-
-# ==========================================
 # RUN SERVER
 # ==========================================
 if __name__ == "__main__":
